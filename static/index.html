@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Quản Lý Căn Hộ AI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Tích hợp Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .sidebar { min-height: 100vh; background: #1e293b; color: white; width: 250px; position: fixed; z-index: 100; }
+        .sidebar .nav-link { color: #94a3b8; font-weight: 500; margin: 5px 10px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+        .sidebar .nav-link:hover, .sidebar .nav-link.active { background: #0ea5e9; color: white; }
+        .main-content { margin-left: 250px; padding: 25px; }
+        .card-stat { border: none; border-radius: 12px; transition: transform 0.2s; }
+        .card-stat:hover { transform: translateY(-3px); }
+        .auth-container { max-width: 420px; margin: 80px auto; }
+        .ai-badge { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; }
+        .room-card { border-radius: 10px; border: 1px solid #e2e8f0; transition: all 0.2s; }
+        .room-card:hover { transform: translateY(-2px); }
+        .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 6px; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. MÀN HÌNH ĐĂNG NHẬP / ĐĂNG KÝ -->
+    <div id="auth-box" class="container auth-container">
+        <div class="card shadow-lg border-0 rounded-4 p-4">
+            <div class="text-center mb-4">
+                <i class="fa-solid fa-building-user fa-3x text-primary mb-2"></i>
+                <h3 class="fw-bold text-dark" id="auth-title">ĐĂNG NHẬP HỆ THỐNG</h3>
+                <p class="text-muted small">Phần mềm quản lý căn hộ tích hợp AI</p>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Tên đăng nhập</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+                    <input type="text" id="username" class="form-control" placeholder="Nhập tài khoản...">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Mật khẩu</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fa-solid fa-lock"></i></span>
+                    <input type="password" id="password" class="form-control" placeholder="••••••••">
+                </div>
+            </div>
+            <div class="mb-3" id="role-group" style="display: none;">
+                <label class="form-label fw-semibold">Vai trò công việc</label>
+                <select id="role" class="form-select">
+                    <option value="Kế toán viên">Kế toán viên (Accountant)</option>
+                    <option value="Quản lý tòa nhà">Quản lý tòa nhà (Admin)</option>
+                    <option value="Lễ tân / Thu ngân">Lễ tân / Thu ngân</option>
+                </select>
+            </div>
+            <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" onclick="handleAuth()" id="auth-btn">
+                <i class="fa-solid fa-right-to-bracket me-2"></i> Đăng Nhập
+            </button>
+            <div class="text-center mt-3">
+                <a href="#" class="text-decoration-none small fw-semibold" onclick="toggleAuthMode()" id="toggle-text">
+                    Chưa có tài khoản? Đăng ký ngay
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. MÀN HÌNH DASHBOARD DÙNG CHUNG -->
+    <div id="dashboard-box" style="display: none;">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar p-3 d-flex flex-column">
+            <div class="d-flex align-items-center mb-4 px-2">
+                <i class="fa-solid fa-city fa-2x text-info me-2"></i>
+                <span class="fs-5 fw-bold">ICTU Tower</span>
+            </div>
+            <ul class="nav nav-pills flex-column mb-auto">
+                <li class="nav-item">
+                    <a class="nav-link active" onclick="switchTab('tab-overview', this)">
+                        <i class="fa-solid fa-chart-pie me-2"></i> Tổng quan
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-link" onclick="switchTab('tab-rooms', this)">
+                        <i class="fa-solid fa-door-closed me-2"></i> Danh sách phòng
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-link" onclick="switchTab('tab-debts', this)">
+                        <i class="fa-solid fa-file-invoice-dollar me-2"></i> Quản lý công nợ
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-link" onclick="switchTab('tab-revenue', this)">
+                        <i class="fa-solid fa-wallet me-2"></i> Doanh thu & Báo cáo
+                    </a>
+                </li>
+                <li>
+                    <a class="nav-link" onclick="switchTab('tab-ai', this)">
+                        <i class="fa-solid fa-wand-magic-sparkles me-2"></i> Trợ lý AI <span class="ai-badge">Pro</span>
+                    </a>
+                </li>
+            </ul>
+            <hr class="text-secondary">
+            <div class="dropdown">
+                <div class="d-flex align-items-center text-white text-decoration-none">
+                    <i class="fa-solid fa-circle-user fa-2x me-2 text-info"></i>
+                    <div>
+                        <strong id="user-display" class="d-block">Admin</strong>
+                        <small class="text-muted" id="role-display">Kế toán</small>
+                    </div>
+                </div>
+                <button onclick="logout()" class="btn btn-outline-danger btn-sm w-100 mt-3">
+                    <i class="fa-solid fa-power-off me-1"></i> Đăng xuất
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Topbar Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+                <h4 class="fw-bold text-dark m-0" id="page-title">Báo Cáo Tổng Quan & Quản Lý Căn Hộ</h4>
+                <span class="badge bg-success px-3 py-2 fs-6"><i class="fa-solid fa-circle-check me-1"></i> Hệ thống đang chạy</span>
+            </div>
+
+            <!-- GIAO DIỆN 1: TỔNG QUAN (OVERVIEW) -->
+            <div id="tab-overview" class="tab-page">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="card card-stat shadow-sm bg-white p-3 border-start border-primary border-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted small mb-1">Tổng số căn hộ</p>
+                                    <h3 class="fw-bold text-dark m-0">50 Căn</h3>
+                                </div>
+                                <i class="fa-solid fa-building fa-2x text-primary opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card card-stat shadow-sm bg-white p-3 border-start border-success border-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted small mb-1">Đang cho thuê</p>
+                                    <h3 class="fw-bold text-success m-0">38 Căn</h3>
+                                </div>
+                                <i class="fa-solid fa-key fa-2x text-success opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card card-stat shadow-sm bg-white p-3 border-start border-info border-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted small mb-1">Doanh thu tháng này</p>
+                                    <h3 class="fw-bold text-info m-0">450 Tr</h3>
+                                </div>
+                                <i class="fa-solid fa-money-bill-wave fa-2x text-info opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card card-stat shadow-sm bg-white p-3 border-start border-danger border-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted small mb-1">Căn hộ quá hạn tiền</p>
+                                    <h3 class="fw-bold text-danger m-0">3 Căn</h3>
+                                </div>
+                                <i class="fa-solid fa-triangle-exclamation fa-2x text-danger opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-lg-7">
+                        <div class="card border-0 shadow-sm rounded-3">
+                            <div class="card-header bg-white py-3">
+                                <h6 class="fw-bold m-0 text-dark"><i class="fa-solid fa-clock-rotate-left me-2 text-primary"></i>Hoạt Động Gần Đây</h6>
+                            </div>
+                            <div class="card-body">
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div><strong class="text-dark">Phòng A102</strong> vừa thanh toán tiền nhà tháng 9</div>
+                                        <small class="text-muted">10 phút trước</small>
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div><strong class="text-dark">Phòng B205</strong> vừa báo sự cố vòi nước</div>
+                                        <small class="text-muted">1 giờ trước</small>
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <div>AI vừa tự động tạo tin nhắn nhắc nợ cho <strong class="text-dark">Phòng A101</strong></div>
+                                        <small class="text-muted">2 giờ trước</small>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-5">
+                        <div class="card border-0 shadow-sm rounded-3 bg-white p-3">
+                            <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-bolt me-2 text-warning"></i>Thao Tác Nhanh</h6>
+                            <button class="btn btn-outline-primary mb-2 text-start w-100" onclick="switchTabByName('tab-rooms')"><i class="fa-solid fa-plus me-2"></i> Quản lý danh sách phòng</button>
+                            <button class="btn btn-outline-danger mb-2 text-start w-100" onclick="switchTabByName('tab-debts')"><i class="fa-solid fa-bell me-2"></i> Kiểm tra danh sách nợ tiền</button>
+                            <button class="btn btn-outline-purple text-start w-100" onclick="switchTabByName('tab-ai')"><i class="fa-solid fa-robot me-2"></i> Mở Trợ Lý Gemini AI</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GIAO DIỆN 2: DANH SÁCH PHÒNG (ROOMS) -->
+            <div id="tab-rooms" class="tab-page" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-secondary active">Tất cả (50)</button>
+                        <button class="btn btn-sm btn-outline-success">Đang ở (38)</button>
+                        <button class="btn btn-sm btn-outline-warning">Còn trống (10)</button>
+                        <button class="btn btn-sm btn-outline-danger">Bảo trì (2)</button>
+                    </div>
+                    <button class="btn btn-primary btn-sm fw-bold"><i class="fa-solid fa-plus me-1"></i> Thêm Căn Hộ</button>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <div class="card room-card p-3 bg-white">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5 class="fw-bold text-dark m-0">Phòng A101</h5>
+                                <span class="badge bg-danger status-badge">Chưa đóng tiền</span>
+                            </div>
+                            <p class="text-muted small mb-1"><i class="fa-solid fa-user me-1"></i> Nguyễn Văn An</p>
+                            <p class="text-muted small mb-2"><i class="fa-solid fa-tag me-1"></i> 8.500.000 đ/tháng</p>
+                            <button class="btn btn-sm btn-outline-primary w-100" onclick="switchTabByName('tab-debts'); fillReminder('Nguyễn Văn An', 'A101', '8.500.000', '05/09/2026');">Xem Công Nợ</button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card room-card p-3 bg-white">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5 class="fw-bold text-dark m-0">Phòng A102</h5>
+                                <span class="badge bg-success status-badge">Đã đóng tiền</span>
+                            </div>
+                            <p class="text-muted small mb-1"><i class="fa-solid fa-user me-1"></i> Trần Thị Bích</p>
+                            <p class="text-muted small mb-2"><i class="fa-solid fa-tag me-1"></i> 10.000.000 đ/tháng</p>
+                            <button class="btn btn-sm btn-light w-100" disabled>Đã hoàn tất</button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card room-card p-3 bg-white">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5 class="fw-bold text-dark m-0">Phòng A103</h5>
+                                <span class="badge bg-warning text-dark status-badge">Còn trống</span>
+                            </div>
+                            <p class="text-muted small mb-1"><i class="fa-solid fa-user me-1"></i> (Chưa có khách)</p>
+                            <p class="text-muted small mb-2"><i class="fa-solid fa-tag me-1"></i> 7.500.000 đ/tháng</p>
+                            <button class="btn btn-sm btn-outline-success w-100"><i class="fa-solid fa-key me-1"></i> Cho thuê ngay</button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card room-card p-3 bg-white">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5 class="fw-bold text-dark m-0">Phòng B205</h5>
+                                <span class="badge bg-danger status-badge">Chưa đóng tiền</span>
+                            </div>
+                            <p class="text-muted small mb-1"><i class="fa-solid fa-user me-1"></i> Lê Hoàng Chinh</p>
+                            <p class="text-muted small mb-2"><i class="fa-solid fa-tag me-1"></i> 6.200.000 đ/tháng</p>
+                            <button class="btn btn-sm btn-outline-primary w-100" onclick="switchTabByName('tab-debts'); fillReminder('Lê Hoàng Chinh', 'B205', '6.200.000', '05/09/2026');">Xem Công Nợ</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GIAO DIỆN 3: QUẢN LÝ CÔNG NỢ (DEBTS) -->
+            <div id="tab-debts" class="tab-page" style="display: none;">
+                <div class="card border-0 shadow-sm rounded-3 bg-white">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                        <h6 class="fw-bold m-0 text-dark"><i class="fa-solid fa-file-invoice-dollar me-2 text-danger"></i>Danh Sách Thu Tiền & Quản Lý Nợ</h6>
+                        <span class="badge bg-danger">Có 3 căn hộ quá hạn</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Mã Phòng</th>
+                                    <th>Tên Khách Thuê</th>
+                                    <th>Số Tiền Phải Nộp</th>
+                                    <th>Hạn Thanh Toán</th>
+                                    <th>Trạng Thái</th>
+                                    <th>Thao Tác AI</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>A101</strong></td>
+                                    <td>Nguyễn Văn An</td>
+                                    <td>8.500.000 đ</td>
+                                    <td>05/09/2026</td>
+                                    <td><span class="badge bg-danger">Chưa thanh toán</span></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary fw-bold" onclick="switchTabByName('tab-ai'); fillReminder('Nguyễn Văn An', 'A101', '8.500.000', '05/09/2026');">
+                                            <i class="fa-solid fa-wand-magic-sparkles me-1"></i> AI Soạn Tin Nhắc
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>A102</strong></td>
+                                    <td>Trần Thị Bích</td>
+                                    <td>10.000.000 đ</td>
+                                    <td>01/09/2026</td>
+                                    <td><span class="badge bg-success">Đã thanh toán</span></td>
+                                    <td><button class="btn btn-sm btn-light" disabled>Đã hoàn tất</button></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>B205</strong></td>
+                                    <td>Lê Hoàng Chinh</td>
+                                    <td>6.200.000 đ</td>
+                                    <td>05/09/2026</td>
+                                    <td><span class="badge bg-danger">Chưa thanh toán</span></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary fw-bold" onclick="switchTabByName('tab-ai'); fillReminder('Lê Hoàng Chinh', 'B205', '6.200.000', '05/09/2026');">
+                                            <i class="fa-solid fa-wand-magic-sparkles me-1"></i> AI Soạn Tin Nhắc
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GIAO DIỆN 4: DOANH THU & BÁO CÁO (REVENUE) -->
+            <div id="tab-revenue" class="tab-page" style="display: none;">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <div class="card p-3 bg-white border-0 shadow-sm text-center">
+                            <p class="text-muted mb-1">Tổng Doanh Thu Tháng Này</p>
+                            <h2 class="fw-bold text-success">450.000.000 đ</h2>
+                            <small class="text-success"><i class="fa-solid fa-arrow-up me-1"></i>Tăng 12% so với tháng trước</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card p-3 bg-white border-0 shadow-sm text-center">
+                            <p class="text-muted mb-1">Đã Thu Thực Tế</p>
+                            <h2 class="fw-bold text-primary">435.300.000 đ</h2>
+                            <small class="text-muted">Đạt 96.7% kế hoạch</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card p-3 bg-white border-0 shadow-sm text-center">
+                            <p class="text-muted mb-1">Công Nợ Tồn Đọng</p>
+                            <h2 class="fw-bold text-danger">14.700.000 đ</h2>
+                            <small class="text-danger">3 căn hộ chưa đóng</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-lg-8">
+                        <div class="card border-0 shadow-sm p-3 bg-white">
+                            <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-chart-column me-2 text-primary"></i>Doanh Thu 6 Tháng Gần Nhất (Tỷ VNĐ)</h6>
+                            <canvas id="barChart" height="130"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="card border-0 shadow-sm p-3 bg-white">
+                            <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-chart-pie me-2 text-info"></i>Tỷ Lệ Trạng Thái Phòng</h6>
+                            <canvas id="doughnutChart" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GIAO DIỆN 5: TRỢ LÝ AI (AI ASSISTANT - CÓ NÚT BẤM GỬI ZALO/EMAIL/COPY) -->
+            <div id="tab-ai" class="tab-page" style="display: none;">
+                <div class="row g-4">
+                    <div class="col-lg-5">
+                        <div class="card border-0 shadow-sm rounded-3">
+                            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                                <h6 class="fw-bold m-0 text-dark"><i class="fa-solid fa-robot me-2 text-primary"></i>Trợ Lý Thông Báo & Nhắc Nợ Gemini AI</h6>
+                                <span class="ai-badge">Google AI</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-2"><label class="form-label small fw-bold">Tên khách thuê:</label><input type="text" id="tenant_name" class="form-control form-control-sm" placeholder="Nguyễn Văn An"></div>
+                                <div class="mb-2"><label class="form-label small fw-bold">Mã phòng:</label><input type="text" id="apartment" class="form-control form-control-sm" placeholder="A101"></div>
+                                <div class="mb-2"><label class="form-label small fw-bold">Số tiền (VNĐ):</label><input type="text" id="amount" class="form-control form-control-sm" placeholder="8.500.000"></div>
+                                <div class="mb-3"><label class="form-label small fw-bold">Hạn đóng tiền:</label><input type="text" id="due_date" class="form-control form-control-sm" placeholder="05/09/2026"></div>
+                                <button onclick="generateReminder()" class="btn btn-success w-100 fw-bold py-2">
+                                    <i class="fa-solid fa-paper-plane me-1"></i> Yêu Cầu AI Soạn Mẫu Tin Nhắc
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-7">
+                        <div class="card border-0 shadow-sm rounded-3 h-100">
+                            <div class="card-header bg-white py-3">
+                                <h6 class="fw-bold m-0 text-dark"><i class="fa-solid fa-comment-dots me-2 text-success"></i>Kết Quả Văn Bản Từ AI</h6>
+                            </div>
+                            <div class="card-body bg-light d-flex flex-column justify-content-between">
+                                <div>
+                                    <div id="ai-output-box" style="display: none;">
+                                        <div class="p-3 bg-white rounded border border-1 mb-3" id="ai-output-text"></div>
+                                    </div>
+                                    <div id="ai-placeholder" class="text-center text-muted my-5">
+                                        <i class="fa-solid fa-wand-magic-sparkles fa-3x mb-2 opacity-50"></i>
+                                        <p class="small">Kết quả mẫu tin nhắn tự động từ AI sẽ xuất hiện tại đây...</p>
+                                    </div>
+                                </div>
+
+                                <!-- KHU VỰC CÁC NÚT THAO TÁC TỰ ĐỘNG GỬI -->
+                                <div id="action-buttons" style="display: none;" class="pt-3 border-top">
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-primary btn-sm fw-bold flex-fill" onclick="sendZalo()">
+                                            <i class="fa-solid fa-comment me-1"></i> Gửi Qua Zalo
+                                        </button>
+                                        <button class="btn btn-outline-danger btn-sm fw-bold flex-fill" onclick="sendEmail()">
+                                            <i class="fa-solid fa-envelope me-1"></i> Gửi qua Email
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm fw-bold" onclick="copyText()">
+                                            <i class="fa-solid fa-copy me-1"></i> Sao chép
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isLoginMode = true;
+        let chartInitialized = false;
+        let rawAiMessage = ""; // Lưu văn bản thô từ AI để gửi đi
+
+        function switchTab(tabId, element) {
+            document.querySelectorAll('.tab-page').forEach(page => page.style.display = 'none');
+            document.querySelectorAll('.sidebar .nav-link').forEach(link => link.classList.remove('active'));
+            
+            document.getElementById(tabId).style.display = 'block';
+            if(element) element.classList.add('active');
+
+            const titles = {
+                'tab-overview': 'Báo Cáo Tổng Quan & Quản Lý Căn Hộ',
+                'tab-rooms': 'Danh Sách Căn Hộ & Tình Trạng Thuê',
+                'tab-debts': 'Quản Lý Công Nợ & Nhắc Nợ',
+                'tab-revenue': 'Báo Cáo Doanh Thu Tòa Nhà',
+                'tab-ai': 'Trợ Lý AI Thông Minh Google Gemini'
+            };
+            document.getElementById('page-title').innerText = titles[tabId] || 'Hệ Thống Quản Lý';
+
+            if (tabId === 'tab-revenue' && !chartInitialized) {
+                initCharts();
+                chartInitialized = true;
+            }
+        }
+
+        function switchTabByName(tabId) {
+            const navLinks = document.querySelectorAll('.sidebar .nav-link');
+            let targetIndex = 0;
+            if(tabId === 'tab-rooms') targetIndex = 1;
+            if(tabId === 'tab-debts') targetIndex = 2;
+            if(tabId === 'tab-revenue') targetIndex = 3;
+            if(tabId === 'tab-ai') targetIndex = 4;
+
+            switchTab(tabId, navLinks[targetIndex]);
+        }
+
+        function toggleAuthMode() {
+            isLoginMode = !isLoginMode;
+            document.getElementById('auth-title').innerText = isLoginMode ? "ĐĂNG NHẬP HỆ THỐNG" : "ĐĂNG KÝ TÀI KHOẢN";
+            document.getElementById('auth-btn').innerHTML = isLoginMode ? '<i class="fa-solid fa-right-to-bracket me-2"></i> Đăng Nhập' : '<i class="fa-solid fa-user-plus me-2"></i> Tạo Tài Khoản';
+            document.getElementById('role-group').style.display = isLoginMode ? "none" : "block";
+            document.getElementById('toggle-text').innerText = isLoginMode ? "Chưa có tài khoản? Đăng ký ngay" : "Đã có tài khoản? Đăng nhập";
+        }
+
+        function handleAuth() {
+            const user = document.getElementById('username').value;
+            if (!user) { alert("Vui lòng nhập tên đăng nhập!"); return; }
+            
+            const role = isLoginMode ? "Kế toán viên" : document.getElementById('role').value;
+            
+            document.getElementById('auth-box').style.display = 'none';
+            document.getElementById('dashboard-box').style.display = 'block';
+            document.getElementById('user-display').innerText = user;
+            document.getElementById('role-display').innerText = role;
+        }
+
+        function logout() {
+            document.getElementById('auth-box').style.display = 'block';
+            document.getElementById('dashboard-box').style.display = 'none';
+        }
+
+        function fillReminder(name, room, money, date) {
+            document.getElementById('tenant_name').value = name;
+            document.getElementById('apartment').value = room;
+            document.getElementById('amount').value = money;
+            document.getElementById('due_date').value = date;
+        }
+
+        async function generateReminder() {
+            const tenant_name = document.getElementById('tenant_name').value;
+            const apartment = document.getElementById('apartment').value;
+            const amount = document.getElementById('amount').value;
+            const due_date = document.getElementById('due_date').value;
+
+            if(!tenant_name || !apartment || !amount || !due_date) {
+                alert("Vui lòng nhập đủ thông tin!"); return;
+            }
+
+            document.getElementById('action-buttons').style.display = 'none';
+            showAIOutput("AI đang tự động soạn văn bản nhắc nợ...");
+
+            try {
+                const response = await fetch('/api/v1/ai/generate-reminder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tenant_name, apartment, amount, due_date })
+                });
+                const data = await response.json();
+                rawAiMessage = data.message; // Lưu tin nhắn dạng thô
+                showAIOutput(data.message);
+                document.getElementById('action-buttons').style.display = 'block'; // Hiện các nút bấm
+            } catch (err) {
+                showAIOutput("Lỗi kết nối AI hoặc chưa cài đặt GEMINI_API_KEY!");
+            }
+        }
+
+        function showAIOutput(text) {
+            document.getElementById('ai-placeholder').style.display = 'none';
+            document.getElementById('ai-output-box').style.display = 'block';
+            let formattedText = text
+                .replace(/\n/g, '<br>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/### (.*?)(<br>|$)/g, '<h6 class="fw-bold text-primary mt-3 mb-1">$1</h6>')
+                .replace(/---/g, '<hr class="my-2">');
+            
+            document.getElementById('ai-output-text').innerHTML = formattedText;
+        }
+
+        // HÀM XỬ LÝ NÚT THAO TÁC GỬI TIN
+        function copyText() {
+            navigator.clipboard.writeText(rawAiMessage);
+            alert("Đã sao chép nội dung tin nhắn vào bộ nhớ tạm!");
+        }
+
+        function sendZalo() {
+            navigator.clipboard.writeText(rawAiMessage);
+            alert("Đã sao chép tin nhắn! Hệ thống sẽ chuyển hướng sang Zalo Web...");
+            window.open('https://chat.zalo.me/', '_blank');
+        }
+
+        function sendEmail() {
+            const apartment = document.getElementById('apartment').value;
+            const subject = encodeURIComponent(`[ICTU TOWER] Thông báo tiền nhà phòng ${apartment}`);
+            const body = encodeURIComponent(rawAiMessage);
+            window.location.href = `mailto:?subject=${subject}&body=${body}`;
+        }
+
+        function initCharts() {
+            const ctxBar = document.getElementById('barChart').getContext('2d');
+            new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: ['Tháng 4', 'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8', 'Tháng 9'],
+                    datasets: [{
+                        label: 'Doanh thu (Triệu VNĐ)',
+                        data: [380, 410, 395, 430, 420, 450],
+                        backgroundColor: '#0ea5e9',
+                        borderRadius: 6
+                    }]
+                },
+                options: { responsive: true, plugins: { legend: { display: false } } }
+            });
+
+            const ctxDoughnut = document.getElementById('doughnutChart').getContext('2d');
+            new Chart(ctxDoughnut, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Đang ở', 'Còn trống', 'Bảo trì'],
+                    datasets: [{
+                        data: [38, 10, 2],
+                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444']
+                    }]
+                },
+                options: { responsive: true }
+            });
+        }
+    </script>
+</body>
+</html>
