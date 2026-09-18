@@ -1,47 +1,126 @@
-import os
-from fastapi import FastAPI, HTTPException
+"""Main FastAPI application for ICTU Tower AI Management System.
+
+Provides REST endpoints for AI operations: payment reminders,
+contract summarization, and building regulation Q&A.
+"""
+
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, status
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-app = FastAPI()
+from app.ai_service import AIService
 
+app = FastAPI(
+    title="ICTU Tower - Enterprise AI Apartment Management",
+    description="Hệ thống quản trị căn hộ thông minh tích hợp Google Gemini AI",
+    version="2.0.0",
+)
+
+ai_service = AIService()
+
+
+# ==========================================
+# PYDANTIC SCHEMAS (CHUẨN DỮ LIỆU ĐẦU VÀO/RA)
+# ==========================================
 class ReminderRequest(BaseModel):
-    tenant_name: str
-    apartment: str
-    amount: str
-    due_date: str
-    template_type: str = "1"  # Mặc định là Mẫu 1
+    """Schema for payment reminder request."""
 
-@app.post("/api/v1/ai/generate-reminder")
-async def generate_reminder(req: ReminderRequest):
+    tenant_name: str = Field(..., description="Họ tên người thuê")
+    apartment: str = Field(..., description="Mã số căn hộ")
+    amount: str = Field(..., description="Số tiền cần thanh toán")
+    due_date: str = Field(..., description="Hạn chót thanh toán")
+    tone: str = Field(
+        default="lich_su",
+        description="Phong cách: lich_su | than_thien | quyet_liet",
+    )
+
+
+class ContractRequest(BaseModel):
+    """Schema for contract summarization request."""
+
+    contract_text: str = Field(..., description="Toàn văn hợp đồng thuê nhà")
+
+
+class QuestionRequest(BaseModel):
+    """Schema for building regulations inquiry."""
+
+    question: str = Field(..., description="Câu hỏi của cư dân hoặc quản lý")
+
+
+class StandardAIResponse(BaseModel):
+    """Standardized response schema for AI actions."""
+
+    status: str
+    data: str
+
+
+# ==========================================
+# CÁC ENDPOINT REST API DÀNH CHO AI
+# ==========================================
+@app.post(
+    "/api/v1/ai/generate-reminder",
+    response_model=StandardAIResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def api_generate_reminder(req: ReminderRequest) -> StandardAIResponse:
+    """Soạn tin nhắn nhắc nợ thông minh qua Gemini AI."""
     try:
-        # MẪU 1: Lịch sự & Chuyên nghiệp (Gửi đầu tháng/Đúng hạn)
-        if req.template_type == "1":
-            message = (
-                f"Kính gửi anh/chị {req.tenant_name},\n\n"
-                f"Ban quản lý căn hộ xin thông báo tiền thuê nhà phòng {req.apartment} tháng này là {req.amount} VNĐ.\n"
-                f"Hạn thanh toán: Ngày {req.due_date}.\n\n"
-                f"Anh/chị vui lòng thanh toán đúng hạn qua chuyển khoản ngân hàng hoặc nộp trực tiếp.\n"
-                f"Xin cảm ơn anh/chị!"
-            )
-        # MẪU 2: Nhắc nhở Thân thiện (Gửi khi sắp tới hạn)
-        elif req.template_type == "2":
-            message = (
-                f"Chào anh/chị {req.tenant_name} (phòng {req.apartment}),\n\n"
-                f"BQL nhắc nhẹ anh/chị tiền nhà tháng này là {req.amount} VNĐ, hạn đóng đến ngày {req.due_date} nha.\n"
-                f"Anh/chị sắp xếp thanh toán sớm giúp bên em nhé. Chúc anh/chị một tuần làm việc hiệu quả!"
-            )
-        # MẪU 3: Quyết liệt (Nhắc nợ quá hạn)
-        else:
-            message = (
-                f"[THÔNG BÁO QUÁ HẠN] - Phòng {req.apartment}\n\n"
-                f"Gửi anh/chị {req.tenant_name},\n"
-                f"Tiền nhà tháng này ({req.amount} VNĐ) đã quá hạn thanh toán ngày {req.due_date}.\n"
-                f"Đề nghị anh/chị hoàn tất thanh toán trong hôm nay để không làm ảnh hưởng đến hợp đồng thuê nhà."
-            )
+        content = ai_service.generate_payment_reminder(
+            tenant_name=req.tenant_name,
+            apartment=req.apartment,
+            amount=req.amount,
+            due_date=req.due_date,
+            tone=req.tone,
+        )
+        return StandardAIResponse(status="success", data=content)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi AI: {str(exc)}",
+        ) from exc
 
-        return {"status": "success", "message": message}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+@app.post(
+    "/api/v1/ai/summarize-contract",
+    response_model=StandardAIResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def api_summarize_contract(req: ContractRequest) -> StandardAIResponse:
+    """Tóm tắt và bóc tách các điều khoản quan trọng trong hợp đồng."""
+    try:
+        summary = ai_service.summarize_contract(req.contract_text)
+        return StandardAIResponse(status="success", data=summary)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi phân tích hợp đồng: {str(exc)}",
+        ) from exc
+
+
+@app.post(
+    "/api/v1/ai/ask-regulation",
+    response_model=StandardAIResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def api_ask_regulation(req: QuestionRequest) -> StandardAIResponse:
+    """Chatbot giải đáp nội quy tòa nhà 24/7 theo cơ sở dữ liệu tri thức."""
+    try:
+        answer = ai_service.answer_regulation(req.question)
+        return StandardAIResponse(status="success", data=answer)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi chatbot: {str(exc)}",
+        ) from exc
+
+
+# ==========================================
+# MOUNT THƯ MỤC TĨNH GIAO DIỆN WEB
+# ==========================================
+BASE_DIR = Path(__file__).resolve().parent.parent
+STATIC_DIR = BASE_DIR / "static"
+
+if STATIC_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
