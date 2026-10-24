@@ -204,20 +204,57 @@
 
         <!-- Nội Dung Chính -->
         <div class="main-content">
-            <!-- Header Bar & Bộ Chuyển Vai Trò 1-Chạm Nhanh -->
-            <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-2">
+            <!-- Header Bar & Thanh Công Cụ Toàn Cục -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom gap-3">
                 <div>
-                    <h4 class="fw-bold text-dark m-0">Trung Tâm Điều Hành Tòa Nhà ICTU Tower</h4>
-                    <small class="text-muted">Hệ thống quản lý căn hộ thông minh tích hợp Trợ Lý AI</small>
+                    <h4 class="fw-bold text-dark m-0 d-flex align-items-center">
+                        <i class="fa-solid fa-building-shield text-primary me-2"></i>Trung Tâm Điều Hành ICTU Tower
+                    </h4>
+                    <small class="text-muted">Hệ thống quản lý căn hộ doanh nghiệp tích hợp Trợ Lý AI</small>
+                </div>
+
+                <!-- Ô Tìm Kiếm Nhanh Toàn Cục (Global Search) -->
+                <div class="position-relative flex-grow-1 mx-lg-3 my-1" style="max-width: 380px; min-width: 250px;">
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 rounded-start-pill ps-3 text-muted">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </span>
+                        <input type="text" id="globalSearchInput" class="form-control border-start-0 border-end-0 ps-1 shadow-sm" 
+                            placeholder="Tìm phòng, cư dân, xe, SĐT... (Ctrl+K)" 
+                            oninput="handleGlobalSearch(this.value)"
+                            onfocus="handleGlobalSearch(this.value)"
+                            autocomplete="off" style="font-size: 0.88rem;">
+                        <span class="input-group-text bg-white border-start-0 rounded-end-pill pe-3 text-muted">
+                            <kbd class="bg-light text-muted border small" style="font-size: 0.7rem;">Ctrl K</kbd>
+                        </span>
+                    </div>
+                    <!-- Dropdown Kết Quả Tìm Kiếm -->
+                    <div id="globalSearchResults" class="card position-absolute shadow-lg border rounded-4 mt-2 w-100 p-2" 
+                        style="display: none; z-index: 1060; max-height: 440px; overflow-y: auto; left: 0;">
+                    </div>
                 </div>
                 
-                <!-- Thanh Chuyển Đổi Quyền Hạn Nhanh 1-Chạm -->
-                <div class="d-flex align-items-center bg-white p-2 px-3 rounded-4 shadow-sm border gap-2">
-                    <span class="small fw-bold text-muted me-1"><i class="fa-solid fa-user-gear text-primary me-1"></i>Vai trò:</span>
-                    <div class="btn-group btn-group-sm" role="group">
-                        <button type="button" class="btn btn-outline-danger fw-bold" id="btn-role-admin" onclick="switchDirectRole('admin')">🔴 Admin</button>
-                        <button type="button" class="btn btn-outline-warning text-dark fw-bold" id="btn-role-accountant" onclick="switchDirectRole('accountant')">🟡 Kế Toán</button>
-                        <button type="button" class="btn btn-outline-success fw-bold" id="btn-role-staff" onclick="switchDirectRole('staff')">🟢 Nhân viên</button>
+                <!-- Cụm Công Cụ & Chuyển Vai Trò -->
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <!-- Trạng Thái Database PostgreSQL -->
+                    <span id="db-status-badge" class="badge bg-light text-muted border rounded-pill px-3 py-2 shadow-sm d-flex align-items-center gap-1" title="Trạng thái PostgreSQL Database">
+                        <i class="fa-solid fa-database text-primary"></i> <span id="db-status-text">Đang kết nối PostgreSQL...</span>
+                    </span>
+
+                    <!-- Nút Khôi Phục Dữ Liệu Mẫu -->
+                    <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3 shadow-sm fw-semibold" 
+                        onclick="resetDemoData()" title="Khôi phục 30 căn hộ, hợp đồng, cư dân về dữ liệu demo ban đầu">
+                        <i class="fa-solid fa-rotate-left me-1"></i> Khôi Phục Mẫu
+                    </button>
+
+                    <!-- Thanh Chuyển Đổi Quyền Hạn Nhanh 1-Chạm -->
+                    <div class="d-flex align-items-center bg-white p-1 px-2 rounded-pill shadow-sm border gap-1">
+                        <span class="small fw-bold text-muted ms-1 me-1"><i class="fa-solid fa-user-gear text-primary me-1"></i>Vai trò:</span>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-danger fw-bold rounded-pill px-2 py-1" id="btn-role-admin" onclick="switchDirectRole('admin')">🔴 Admin</button>
+                            <button type="button" class="btn btn-outline-warning text-dark fw-bold rounded-pill px-2 py-1" id="btn-role-accountant" onclick="switchDirectRole('accountant')">🟡 Kế Toán</button>
+                            <button type="button" class="btn btn-outline-success fw-bold rounded-pill px-2 py-1" id="btn-role-staff" onclick="switchDirectRole('staff')">🟢 Nhân viên</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -464,7 +501,14 @@
                 <div class="card card-stat p-3">
                     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                         <h5 class="fw-bold text-dark m-0"><i class="fa-solid fa-book-bookmark text-primary me-2"></i>Sổ Quỹ Thu - Chi Tiền Mặt & Ngân Hàng</h5>
-                        <button class="btn btn-primary fw-bold" onclick="openAddCashflowModal()"><i class="fa-solid fa-plus-circle me-1"></i> Lập Phiếu Thu / Chi</button>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-success fw-bold shadow-sm" onclick="exportRevenueExcel()">
+                                <i class="fa-solid fa-file-excel me-1"></i> Xuất Báo Cáo Excel
+                            </button>
+                            <button class="btn btn-primary fw-bold" onclick="openAddCashflowModal()">
+                                <i class="fa-solid fa-plus-circle me-1"></i> Lập Phiếu Thu / Chi
+                            </button>
+                        </div>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0">
@@ -499,36 +543,110 @@
                     <!-- SUBTAB 1: BÓC TÁCH HỢP ĐỒNG -->
                     <div id="sub-contract" class="ai-subpage" style="display: none;">
                         <div class="row g-3">
-                            <div class="col-lg-5">
-                                <div class="p-3 bg-light rounded-3 border">
-                                    <h6 class="fw-bold text-primary mb-2">Văn bản hợp đồng thuê:</h6>
-                                    <textarea id="contract_text" class="form-control mb-3" rows="8" placeholder="Dán nội dung hợp đồng..."></textarea>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-outline-secondary btn-sm" onclick="loadSampleContract()">Nạp HĐ Mẫu</button>
-                                        <button class="btn btn-primary btn-sm flex-grow-1 fw-bold" onclick="analyzeContract()"><i class="fa-solid fa-wand-magic-sparkles me-1"></i> Gemini Bóc Tách</button>
+                            <!-- CỘT TRÁI: VĂN BẢN HỢP ĐỒNG GỐC -->
+                            <div class="col-lg-6">
+                                <div class="card border rounded-3 shadow-sm h-100 d-flex flex-column" style="min-height: 560px; max-height: 620px;">
+                                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
+                                        <div class="d-flex align-items-center">
+                                            <i class="fa-solid fa-file-signature text-primary fs-5 me-2"></i>
+                                            <strong class="text-dark">Văn bản hợp đồng thuê:</strong>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button class="btn btn-sm btn-outline-primary rounded-pill px-3" onclick="loadSampleContract()">
+                                                <i class="fa-solid fa-file-import me-1"></i> Nạp HĐ Mẫu
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary rounded-pill px-2" onclick="document.getElementById('contract_text').value=''" title="Xóa nội dung">
+                                                <i class="fa-solid fa-eraser"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body p-3 d-flex flex-column flex-grow-1">
+                                        <textarea id="contract_text" class="form-control flex-grow-1 p-3 border-0 bg-light" 
+                                            style="resize: none; font-size: 0.88rem; line-height: 1.6; border-radius: 8px;" 
+                                            placeholder="Dán toàn văn nội dung hợp đồng thuê căn hộ vào đây (hoặc bấm 'Nạp HĐ Mẫu' để xem thử)..."></textarea>
+                                    </div>
+                                    <div class="card-footer bg-white border-top p-3">
+                                        <button class="btn btn-primary w-100 fw-bold py-2 shadow-sm rounded-pill" onclick="analyzeContract()">
+                                            <i class="fa-solid fa-wand-magic-sparkles me-2"></i> Gemini Bóc Tách & Thẩm Định Hợp Đồng
+                                        </button>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-lg-7"><div id="contract-output" class="h-100 p-3 bg-light rounded-3 border"><p class="text-muted text-center my-4">Kết quả bóc tách điều khoản pháp lý sẽ hiển thị tại đây.</p></div></div>
+
+                            <!-- CỘT PHẢI: KẾT QUẢ BÓC TÁCH ĐIỀU KHOẢN -->
+                            <div class="col-lg-6">
+                                <div class="card border rounded-3 shadow-sm h-100 d-flex flex-column" style="min-height: 560px; max-height: 620px;">
+                                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
+                                        <div class="d-flex align-items-center">
+                                            <i class="fa-solid fa-file-circle-check text-success fs-5 me-2"></i>
+                                            <strong class="text-dark">Kết quả bóc tách hợp đồng:</strong>
+                                        </div>
+                                        <div id="contract-badge-container">
+                                            <span class="badge bg-light text-muted border">Chờ bóc tách</span>
+                                        </div>
+                                    </div>
+                                    <div id="contract-output" class="card-body p-3 flex-grow-1" style="overflow-y: auto; background: #fff;">
+                                        <div class="text-center text-muted my-5 py-4">
+                                            <i class="fa-solid fa-file-lines fa-3x text-secondary mb-3 opacity-50"></i>
+                                            <p class="mb-1 fw-bold text-dark">Chưa có kết quả bóc tách</p>
+                                            <small class="text-muted">Dán hợp đồng ở khung bên trái hoặc bấm <strong>"Nạp HĐ Mẫu"</strong> rồi bấm <strong>"Gemini Bóc Tách"</strong>.</small>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer bg-white border-top p-3 d-flex justify-content-between align-items-center" id="contract-footer-btns" style="display: none !important;">
+                                        <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="copyContractOutput()">
+                                            <i class="fa-solid fa-copy me-1"></i> Sao chép kết quả
+                                        </button>
+                                        <button class="btn btn-sm btn-primary rounded-pill fw-bold" onclick="switchAiSubTab('sub-reminder')">
+                                            <i class="fa-solid fa-share me-1"></i> Soạn thông báo từ HĐ này
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     <!-- SUBTAB 2: SOẠN THÔNG BÁO -->
                     <div id="sub-reminder" class="ai-subpage" style="display: none;">
                         <div class="row g-3">
-                            <div class="col-lg-5">
-                                <div class="p-3 bg-light rounded-3 border">
-                                    <h6 class="fw-bold text-success mb-2">Thông số tạo thông báo:</h6>
-                                    <div class="mb-2"><label class="small fw-bold">Loại thông báo:</label><select id="notice_type" class="form-select form-select-sm" onchange="toggleNoticeFields()"><option value="debt">Thu tiền nhà & phí dịch vụ</option><option value="expiring">Nhắc hết hạn hợp đồng</option><option value="maintenance">Thông báo lịch bảo trì</option><option value="violation">Nhắc nhở vi phạm nội quy</option></select></div>
-                                    <div class="mb-2"><label class="small fw-bold">Giọng văn:</label><select id="notice_tone" class="form-select form-select-sm"><option value="lich_su">Lịch sự - trang trọng</option><option value="than_thien">Thân thiện - gần gũi</option><option value="quyet_liet">Nghiêm khắc - quyết liệt</option></select></div>
-                                    <div class="mb-2"><label class="small fw-bold">Khách thuê:</label><input type="text" id="tenant_name" class="form-control form-control-sm" value="Trần Thị Bích"></div>
-                                    <div class="mb-2"><label class="small fw-bold">Căn hộ:</label><input type="text" id="room_number" class="form-control form-control-sm" value="A102"></div>
-                                    <div class="mb-2" id="group_amount"><label class="small fw-bold">Số tiền (VNĐ):</label><input type="text" id="amount_due" class="form-control form-control-sm" value="10.000.000"></div>
-                                    <div class="mb-3"><label class="small fw-bold" id="lbl_date">Hạn chót:</label><input type="date" id="due_date" class="form-control form-control-sm" value="2026-09-05"></div>
-                                    <button class="btn btn-success btn-sm w-100 fw-bold" onclick="generateReminder()"><i class="fa-solid fa-paper-plane me-1"></i> Gemini Soạn Tin Nhắn</button>
+                            <div class="col-lg-6">
+                                <div class="card border rounded-3 shadow-sm h-100 d-flex flex-column" style="min-height: 560px; max-height: 620px;">
+                                    <div class="card-header bg-white py-3 border-bottom">
+                                        <div class="d-flex align-items-center">
+                                            <i class="fa-solid fa-sliders text-success fs-5 me-2"></i>
+                                            <strong class="text-dark">Thông số tạo thông báo Zalo / SMS:</strong>
+                                        </div>
+                                    </div>
+                                    <div class="card-body p-3 flex-grow-1 overflow-auto">
+                                        <div class="mb-2"><label class="small fw-bold">Loại thông báo:</label><select id="notice_type" class="form-select form-select-sm" onchange="toggleNoticeFields()"><option value="debt">Thu tiền nhà & phí dịch vụ</option><option value="expiring">Nhắc hết hạn hợp đồng</option><option value="maintenance">Thông báo lịch bảo trì</option><option value="violation">Nhắc nhở vi phạm nội quy</option></select></div>
+                                        <div class="mb-2"><label class="small fw-bold">Giọng văn:</label><select id="notice_tone" class="form-select form-select-sm"><option value="lich_su">Lịch sự - trang trọng</option><option value="than_thien">Thân thiện - gần gũi</option><option value="quyet_liet">Nghiêm khắc - quyết liệt</option></select></div>
+                                        <div class="mb-2"><label class="small fw-bold">Khách thuê:</label><input type="text" id="tenant_name" class="form-control form-control-sm" value="Trần Thị Bích"></div>
+                                        <div class="mb-2"><label class="small fw-bold">Căn hộ:</label><input type="text" id="room_number" class="form-control form-control-sm" value="A102"></div>
+                                        <div class="mb-2" id="group_amount"><label class="small fw-bold">Số tiền (VNĐ):</label><input type="text" id="amount_due" class="form-control form-control-sm" value="10.000.000"></div>
+                                        <div class="mb-3"><label class="small fw-bold" id="lbl_date">Hạn chót:</label><input type="date" id="due_date" class="form-control form-control-sm" value="2026-09-05"></div>
+                                    </div>
+                                    <div class="card-footer bg-white border-top p-3">
+                                        <button class="btn btn-success w-100 fw-bold py-2 shadow-sm rounded-pill" onclick="generateReminder()">
+                                            <i class="fa-solid fa-paper-plane me-2"></i> Gemini Soạn Tin Nhắn Tự Động
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-lg-7"><div id="reminder-output" class="h-100 p-3 bg-light rounded-3 border"><p class="text-muted text-center my-4">Bản thảo tin nhắn Zalo/SMS sẽ xuất hiện ở đây.</p></div></div>
+                            <div class="col-lg-6">
+                                <div class="card border rounded-3 shadow-sm h-100 d-flex flex-column" style="min-height: 560px; max-height: 620px;">
+                                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
+                                        <div class="d-flex align-items-center">
+                                            <i class="fa-solid fa-comment-dots text-primary fs-5 me-2"></i>
+                                            <strong class="text-dark">Bản thảo tin nhắn Zalo / SMS:</strong>
+                                        </div>
+                                        <div id="reminder-badge-container">
+                                            <span class="badge bg-light text-muted border">Chờ soạn</span>
+                                        </div>
+                                    </div>
+                                    <div id="reminder-output" class="card-body p-3 flex-grow-1" style="overflow-y: auto; background: #fff;">
+                                        <p class="text-muted text-center my-5 py-4">Bản thảo tin nhắn Zalo/SMS sẽ xuất hiện ở đây.</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -595,7 +713,7 @@
     <div class="modal fade" id="addContractModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg rounded-4 p-2"><div class="modal-header border-0 pb-0"><h5 class="modal-title fw-bold"><i class="fa-solid fa-file-contract text-primary me-2"></i>Lập Hợp Đồng Mới</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-2"><label class="small fw-bold">Chọn Phòng (*):</label><select id="c_room" class="form-select"></select></div><div class="mb-2"><label class="small fw-bold">Tên Khách (*):</label><input type="text" id="c_tenant" class="form-control" placeholder="Họ tên"></div><div class="row g-2 mb-2"><div class="col-6"><label class="small fw-bold">Bắt Đầu (*):</label><input type="date" id="c_start" class="form-control"></div><div class="col-6"><label class="small fw-bold">Hết Hạn (*):</label><input type="date" id="c_end" class="form-control"></div></div><div class="row g-2 mb-2"><div class="col-6"><label class="small fw-bold">Giá Thuê (đ):</label><input type="text" id="c_price" class="form-control" placeholder="8.500.000"></div><div class="col-6"><label class="small fw-bold">Tiền Cọc (đ):</label><input type="text" id="c_deposit" class="form-control" placeholder="17.000.000"></div></div></div><div class="modal-footer border-0 pt-0"><button class="btn btn-light" data-bs-dismiss="modal">Hủy</button><button class="btn btn-primary fw-bold" onclick="saveNewContract()">Ký Hợp Đồng</button></div></div></div></div>
 
     <!-- MODAL: CHI TIẾT HỢP ĐỒNG -->
-    <div class="modal fade" id="contractDetailModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg rounded-4 p-3"><div class="modal-header border-0 pb-2"><h5 class="modal-title fw-bold"><i class="fa-solid fa-file-contract text-primary me-2"></i>Hồ Sơ Hợp Đồng <span id="dt_code" class="text-primary">--</span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body pt-0"><div class="row g-2 mb-3"><div class="col-md-6"><div class="p-3 bg-light rounded-3 border"><h6 class="fw-bold text-primary">Khách Thuê: <span id="dt_tenant_name">--</span></h6><p class="mb-1 small">CCCD: <code id="dt_tenant_idcard" class="text-danger">--</code></p><p class="mb-1 small">SĐT: <span id="dt_tenant_phone">--</span></p><p class="mb-0 small">Email: <span id="dt_tenant_email">--</span></p></div></div><div class="col-md-6"><div class="p-3 bg-light rounded-3 border"><h6 class="fw-bold text-success">Căn Hộ: <span id="dt_room_code">--</span></h6><p class="mb-1 small">Layout: <span id="dt_room_layout">--</span> (<span id="dt_room_area">--</span> m²)</p><p class="mb-0 small">Giá: <span id="dt_room_price" class="text-danger fw-bold">--</span></p></div></div></div><div class="row g-2 text-center mb-2"><div class="col-4"><div class="p-2 border rounded-3 bg-white"><small class="text-muted d-block">Bắt Đầu</small><strong id="dt_start_date">--</strong></div></div><div class="col-4"><div class="p-2 border rounded-3 bg-white"><small class="text-muted d-block">Kết Thúc</small><strong id="dt_end_date">--</strong></div></div><div class="col-4"><div class="p-2 border rounded-3 bg-white"><small class="text-muted d-block">Tiền Cọc</small><strong id="dt_deposit" class="text-success">--</strong></div></div></div></div><div class="modal-footer border-0 pt-0 d-flex justify-content-between"><button class="btn btn-outline-danger" onclick="switchDetailToTerminate()"><i class="fa-solid fa-ban me-1"></i> Thanh Lý HĐ</button><button class="btn btn-primary fw-bold" onclick="switchDetailToRenew()"><i class="fa-solid fa-calendar-plus me-1"></i> Gia Hạn 1 Năm</button></div></div></div></div>
+    <div class="modal fade" id="contractDetailModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg rounded-4 p-3"><div class="modal-header border-0 pb-2"><h5 class="modal-title fw-bold"><i class="fa-solid fa-file-contract text-primary me-2"></i>Hồ Sơ Hợp Đồng <span id="dt_code" class="text-primary">--</span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body pt-0"><div class="row g-2 mb-3"><div class="col-md-6"><div class="p-3 bg-light rounded-3 border"><h6 class="fw-bold text-primary">Khách Thuê: <span id="dt_tenant_name">--</span></h6><p class="mb-1 small">CCCD: <code id="dt_tenant_idcard" class="text-danger">--</code></p><p class="mb-1 small">SĐT: <span id="dt_tenant_phone">--</span></p><p class="mb-0 small">Email: <span id="dt_tenant_email">--</span></p></div></div><div class="col-md-6"><div class="p-3 bg-light rounded-3 border"><h6 class="fw-bold text-success">Căn Hộ: <span id="dt_room_code">--</span></h6><p class="mb-1 small">Layout: <span id="dt_room_layout">--</span> (<span id="dt_room_area">--</span> m²)</p><p class="mb-0 small">Giá: <span id="dt_room_price" class="text-danger fw-bold">--</span></p></div></div></div><div class="row g-2 text-center mb-2"><div class="col-4"><div class="p-2 border rounded-3 bg-white"><small class="text-muted d-block">Bắt Đầu</small><strong id="dt_start_date">--</strong></div></div><div class="col-4"><div class="p-2 border rounded-3 bg-white"><small class="text-muted d-block">Kết Thúc</small><strong id="dt_end_date">--</strong></div></div><div class="col-4"><div class="p-2 border rounded-3 bg-white"><small class="text-muted d-block">Tiền Cọc</small><strong id="dt_deposit" class="text-success">--</strong></div></div></div></div><div class="modal-footer border-0 pt-0 d-flex justify-content-between"><button class="btn btn-outline-danger" onclick="switchDetailToTerminate()"><i class="fa-solid fa-ban me-1"></i> Thanh Lý HĐ</button><button class="btn btn-primary fw-bold" onclick="switchDetailToRenew()"><i class="fa-solid fa-calendar-plus me-1"></i> Gia Hạn Hợp Đồng</button></div></div></div></div>
 
     <!-- MODAL: GHI CHỈ SỐ ĐIỆN NƯỚC -->
     <div class="modal fade" id="meterModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg rounded-4 p-2"><div class="modal-header border-0 pb-0"><h5 class="modal-title fw-bold text-dark"><i class="fa-solid fa-calculator text-warning me-2"></i>Ghi Số Điện Nước Căn <span id="meter_room_code" class="text-primary">--</span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="meter_target_room"><div class="alert alert-light border py-1 px-2 small mb-2">Khách thuê: <strong id="meter_tenant_name">--</strong></div><div class="row g-2 mb-2"><div class="col-6"><label class="small fw-bold">Điện Cũ:</label><input type="number" id="meter_elec_old" class="form-control bg-light" readonly></div><div class="col-6"><label class="small fw-bold text-danger">Điện Mới (*):</label><input type="number" id="meter_elec_new" class="form-control" onkeyup="recalcMeterPreview()"></div></div><div class="row g-2 mb-2"><div class="col-6"><label class="small fw-bold">Nước Cũ:</label><input type="number" id="meter_water_old" class="form-control bg-light" readonly></div><div class="col-6"><label class="small fw-bold text-danger">Nước Mới (*):</label><input type="number" id="meter_water_new" class="form-control" onkeyup="recalcMeterPreview()"></div></div><div class="row g-2 mb-2"><div class="col-6"><label class="small fw-bold">Số xe máy (100k):</label><input type="number" id="meter_bikes" class="form-control" onkeyup="recalcMeterPreview()"></div><div class="col-6"><label class="small fw-bold">Số ô tô (1.2tr):</label><input type="number" id="meter_cars" class="form-control" onkeyup="recalcMeterPreview()"></div></div><div class="p-2 bg-light rounded-3 border small"><div class="d-flex justify-content-between mb-1"><span>Điện:</span><strong id="preview_elec_cost" class="text-danger">0 đ</strong></div><div class="d-flex justify-content-between mb-1"><span>Nước:</span><strong id="preview_water_cost" class="text-primary">0 đ</strong></div><div class="d-flex justify-content-between mb-1"><span>Xe & Quản lý:</span><strong id="preview_vehicle_cost">0 đ</strong></div><div class="border-top pt-1 d-flex justify-content-between fw-bold"><span>Tổng phí dịch vụ:</span><span id="preview_total_service" class="text-success fs-6">0 đ</span></div></div></div><div class="modal-footer border-0 pt-0"><button class="btn btn-light" data-bs-dismiss="modal">Hủy</button><button class="btn btn-primary fw-bold" onclick="saveMeterData()">Lưu Chỉ Số</button></div></div></div></div>
@@ -740,7 +858,10 @@
         let currentCashflow = JSON.parse(localStorage.getItem("ictu_cashflow_v1")) || initialCashflow;
         let currentAuditLogs = JSON.parse(localStorage.getItem("ictu_audit_logs_v1")) || initialAuditLogs;
 
+        let isPostgresConnected = false;
+
         function saveData() {
+            // 1. Lưu dự phòng tại LocalStorage
             localStorage.setItem("ictu_rooms_pro_v3", JSON.stringify(currentRooms));
             localStorage.setItem("ictu_tenants_v1", JSON.stringify(currentTenants));
             localStorage.setItem("ictu_contracts_v1", JSON.stringify(currentContracts));
@@ -749,6 +870,96 @@
             localStorage.setItem("ictu_vehicles_v1", JSON.stringify(currentVehicles));
             localStorage.setItem("ictu_cashflow_v1", JSON.stringify(currentCashflow));
             localStorage.setItem("ictu_audit_logs_v1", JSON.stringify(currentAuditLogs));
+
+            // 2. Tự động đồng bộ lên PostgreSQL (pgAdmin)
+            syncToPostgreSQL();
+        }
+
+        let syncDebounceTimer = null;
+        async function syncToPostgreSQL() {
+            clearTimeout(syncDebounceTimer);
+            syncDebounceTimer = setTimeout(async () => {
+                try {
+                    const res = await fetch('/api/v1/data/sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            rooms: currentRooms,
+                            tenants: currentTenants,
+                            contracts: currentContracts,
+                            maint: currentMaint,
+                            services: currentServices,
+                            vehicles: currentVehicles,
+                            cashflow: currentCashflow,
+                            audit_logs: currentAuditLogs
+                        })
+                    });
+                    const result = await res.json();
+                    if (result && result.ok) {
+                        updateDbBadge(true, "PostgreSQL: Đã đồng bộ");
+                    }
+                } catch (e) {
+                    // Chạy offline qua LocalStorage
+                    updateDbBadge(false, "CSDL: LocalStorage");
+                }
+            }, 300);
+        }
+
+        async function loadFromPostgreSQL() {
+            try {
+                const res = await fetch('/api/v1/data/all');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.rooms && data.rooms.length > 0) currentRooms = data.rooms;
+                    if (data.tenants && data.tenants.length > 0) currentTenants = data.tenants;
+                    if (data.contracts && data.contracts.length > 0) currentContracts = data.contracts;
+                    if (data.maint && data.maint.length > 0) currentMaint = data.maint;
+                    if (data.services && data.services.length > 0) currentServices = data.services;
+                    if (data.vehicles && data.vehicles.length > 0) currentVehicles = data.vehicles;
+                    if (data.cashflow && data.cashflow.length > 0) currentCashflow = data.cashflow;
+                    if (data.audit_logs && data.audit_logs.length > 0) currentAuditLogs = data.audit_logs;
+                    
+                    // Cập nhật lại giao diện sau khi tải từ PostgreSQL
+                    if (typeof renderAllModules === 'function') renderAllModules();
+                    updateDbBadge(true, "PostgreSQL: Đã kết nối");
+                    isPostgresConnected = true;
+                    console.log("[Database] Đã tải dữ liệu thành công từ PostgreSQL!");
+                }
+            } catch (err) {
+                console.log("[Database] Đang dùng dữ liệu LocalStorage");
+                updateDbBadge(false, "CSDL: LocalStorage");
+            }
+        }
+
+        async function checkDbHealth() {
+            try {
+                const res = await fetch('/api/v1/db/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.connected) {
+                        updateDbBadge(true, "PostgreSQL: ictu_tower");
+                        isPostgresConnected = true;
+                        return;
+                    }
+                }
+            } catch (e) {}
+            updateDbBadge(false, "CSDL: LocalStorage");
+        }
+
+        function updateDbBadge(isPg, text) {
+            const badge = document.getElementById('db-status-badge');
+            const txt = document.getElementById('db-status-text');
+            if (!badge || !txt) return;
+
+            if (isPg) {
+                badge.className = "badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 rounded-pill px-3 py-2 shadow-sm d-flex align-items-center gap-1";
+                txt.innerHTML = `<i class="fa-solid fa-database text-primary me-1"></i>${text}`;
+                badge.title = "Đang kết nối PostgreSQL qua pgAdmin (Database: ictu_tower)";
+            } else {
+                badge.className = "badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 rounded-pill px-3 py-2 shadow-sm d-flex align-items-center gap-1";
+                txt.innerHTML = `<i class="fa-solid fa-hard-drive text-secondary me-1"></i>${text}`;
+                badge.title = "Đang lưu tạm trên trình duyệt (LocalStorage)";
+            }
         }
 
         function logActivity(action, detail) {
@@ -1250,15 +1461,138 @@ function populateRoomSelects() {
             Swal.fire('Đã Thanh Lý', `Hợp đồng ${currentDetailContractId} đã kết thúc.`, 'success');
         }
 
-        function switchDetailToRenew() {
+        window.setRenewDate = function(months) {
+            const inp = document.getElementById('renew_new_end');
+            if (!inp) return;
+            const baseStr = inp.getAttribute('data-base') || '';
+            const parts = baseStr.split('-');
+            if (parts.length === 3) {
+                const year = parseInt(parts[0]);
+                const month = parseInt(parts[1]) - 1;
+                const day = parseInt(parts[2]);
+                const d = new Date(year, month + months, day);
+                if (d.getDate() !== day && day > 28) {
+                    d.setDate(0);
+                }
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const dt = String(d.getDate()).padStart(2, '0');
+                inp.value = `${y}-${m}-${dt}`;
+
+                document.querySelectorAll('.btn-quick-renew').forEach(b => {
+                    b.classList.remove('btn-primary', 'fw-bold');
+                    b.classList.add('btn-outline-primary');
+                });
+                const clickedBtn = document.getElementById(`btn_renew_${months}m`);
+                if (clickedBtn) {
+                    clickedBtn.classList.remove('btn-outline-primary');
+                    clickedBtn.classList.add('btn-primary', 'fw-bold');
+                }
+            }
+        };
+
+        async function switchDetailToRenew() {
             if (!checkRolePermission(['staff'], 'Gia Hạn Hợp Đồng')) return;
             const c = currentContracts.find(item => item.id === currentDetailContractId);
             if (!c) return;
-            const nextYear = parseInt(c.end.split('-')[0]) + 1;
-            c.end = `${nextYear}-12-31`;
-            c.status = 'Hiệu lực';
-            saveData(); renderContracts(); closeModalSafe('contractDetailModal');
-            Swal.fire('Đã Gia Hạn!', `Hợp đồng đã được gia hạn đến ${c.end}.`, 'success');
+
+            closeModalSafe('contractDetailModal');
+
+            // Tính sẵn ngày gợi ý +6 tháng
+            let defDate = c.end;
+            const parts = (c.end || '').split('-');
+            if (parts.length === 3) {
+                const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1 + 6, parseInt(parts[2]));
+                defDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+
+            const { value: formValues } = await Swal.fire({
+                title: '<div class="fs-5 fw-bold text-primary"><i class="fa-solid fa-calendar-plus me-2"></i>Gia Hạn Hợp Đồng Thuê</div>',
+                html: `
+                    <div class="text-start bg-light p-3 rounded-3 border mb-3 small">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted">Mã hợp đồng:</span>
+                            <strong class="text-primary">${c.id}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted">Khách thuê & Căn hộ:</span>
+                            <strong>${c.tenant} (Căn ${c.room})</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Hạn kết thúc hiện tại:</span>
+                            <strong class="text-danger fs-6">${c.end}</strong>
+                        </div>
+                    </div>
+
+                    <div class="text-start mb-3">
+                        <label class="form-label fw-bold small text-muted">Chọn nhanh mốc thời gian gia hạn:</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" id="btn_renew_1m" class="btn btn-outline-primary btn-sm rounded-pill px-3 btn-quick-renew" onclick="setRenewDate(1)">+1 Tháng</button>
+                            <button type="button" id="btn_renew_3m" class="btn btn-outline-primary btn-sm rounded-pill px-3 btn-quick-renew" onclick="setRenewDate(3)">+3 Tháng</button>
+                            <button type="button" id="btn_renew_6m" class="btn btn-primary btn-sm rounded-pill px-3 btn-quick-renew fw-bold" onclick="setRenewDate(6)">+6 Tháng</button>
+                            <button type="button" id="btn_renew_12m" class="btn btn-outline-primary btn-sm rounded-pill px-3 btn-quick-renew" onclick="setRenewDate(12)">+1 Năm</button>
+                            <button type="button" id="btn_renew_24m" class="btn btn-outline-primary btn-sm rounded-pill px-3 btn-quick-renew" onclick="setRenewDate(24)">+2 Năm</button>
+                        </div>
+                    </div>
+
+                    <div class="text-start mb-3">
+                        <label class="form-label fw-bold small text-dark"><i class="fa-solid fa-calendar-days text-primary me-1"></i>Hoặc chọn ngày kết thúc mới bất kỳ:</label>
+                        <input type="date" id="renew_new_end" data-base="${c.end}" class="form-control form-control-lg fw-bold text-primary" value="${defDate}">
+                        <div class="form-text small text-muted">Bạn có thể chọn bất kỳ ngày tháng nào theo thỏa thuận mới.</div>
+                    </div>
+
+                    <div class="text-start">
+                        <label class="form-label fw-bold small text-muted">Cập nhật tiền cọc (VNĐ):</label>
+                        <input type="text" id="renew_deposit" class="form-control form-control-sm" value="${c.deposit}">
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '<i class="fa-solid fa-check me-1"></i> Xác Nhận Gia Hạn',
+                cancelButtonText: 'Quay lại',
+                confirmButtonColor: '#4f46e5',
+                cancelButtonColor: '#64748b',
+                focusConfirm: false,
+                preConfirm: () => {
+                    const newEnd = document.getElementById('renew_new_end')?.value;
+                    const deposit = document.getElementById('renew_deposit')?.value.trim();
+                    if (!newEnd) {
+                        Swal.showValidationMessage('Vui lòng chọn ngày kết thúc mới!');
+                        return false;
+                    }
+                    if (newEnd <= c.end) {
+                        Swal.showValidationMessage(`Ngày gia hạn mới (${newEnd}) phải sau ngày kết thúc hiện tại (${c.end})!`);
+                        return false;
+                    }
+                    return { newEnd, deposit };
+                }
+            });
+
+            if (formValues) {
+                const oldEnd = c.end;
+                c.end = formValues.newEnd;
+                if (formValues.deposit) c.deposit = formValues.deposit;
+                c.status = 'Hiệu lực';
+                saveData();
+                renderContracts();
+
+                const dtEndEl = document.getElementById('dt_end_date');
+                if (dtEndEl) dtEndEl.innerText = c.end;
+                const dtDepEl = document.getElementById('dt_deposit');
+                if (dtDepEl) dtDepEl.innerText = `${c.deposit} đ`;
+
+                if (typeof logActivity === "function") {
+                    logActivity("Gia hạn hợp đồng", `HĐ ${c.id} căn ${c.room} gia hạn đến ${c.end}`);
+                }
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Gia Hạn Thành Công!',
+                    html: `Hợp đồng <strong>${c.id}</strong> (Căn <strong>${c.room}</strong> - ${c.tenant}) đã được gia hạn thành công đến ngày: <br><strong class="text-primary fs-5 mt-2 d-inline-block">${c.end}</strong>`,
+                    confirmButtonColor: '#4f46e5'
+                });
+            } else {
+                openContractDetail(currentDetailContractId);
+            }
         }
 
         // 4. ĐIỆN NƯỚC & DỊCH VỤ
@@ -1731,46 +2065,82 @@ function populateRoomSelects() {
             const maint = currentRooms.filter(r => r.status === "maint");
             const debtSum = debts.reduce((s, r) => s + (parseInt((r.price || "0").replace(/\./g, "")) || 0), 0);
 
-            lines.push(`Tòa nhà ICTU Tower, tổng ${total} căn hộ. Đã có khách: ${total - empty.length}. Trống: ${empty.length}. Đang bảo trì: ${maint.length}.`);
-            lines.push(`Tỷ lệ lấp đầy: ${(((total - empty.length) / total) * 100).toFixed(1)}%.`);
+            lines.push(`=== TỔNG QUAN VẬN HÀNH TÒA NHÀ ICTU TOWER ===`);
+            lines.push(`Tổng số căn hộ: ${total} căn | Đang có khách ở: ${total - empty.length} căn | Căn hộ trống: ${empty.length} căn | Đang bảo trì: ${maint.length} căn | Tỷ lệ lấp đầy: ${(((total - empty.length) / total) * 100).toFixed(1)}%.`);
+            lines.push(`Tình hình công nợ: ${debts.length} căn nợ tiền phòng, tổng nợ: ${debtSum.toLocaleString("vi-VN")} đ.`);
 
-            if (currentRole === "accountant" || currentRole === "admin") {
-                lines.push(`Công nợ: ${debts.length} căn, tổng ${debtSum.toLocaleString("vi-VN")} đ.`);
-                lines.push("Danh sách nợ: " + (debts.map(r => `${r.room} (${r.tenant}, ${r.price} đ, hạn ${r.date})`).join("; ") || "không có"));
-                if (typeof currentCashflow !== "undefined") {
-                    const inc = currentCashflow.filter(c => c.type === "income").reduce((s, c) => s + c.amount, 0);
-                    const exp = currentCashflow.filter(c => c.type === "expense").reduce((s, c) => s + c.amount, 0);
-                    lines.push(`Sổ quỹ: thu ${inc.toLocaleString("vi-VN")} đ, chi ${exp.toLocaleString("vi-VN")} đ, tồn ${(inc - exp).toLocaleString("vi-VN")} đ.`);
-                }
+            lines.push(`\n=== 1. TOÀN BỘ 30 CĂN HỘ VÀ TRẠNG THÁI HIỆN TẠI ===`);
+            currentRooms.forEach(r => {
+                const st = r.status === "empty" ? "TRỐNG" : r.status === "debt" ? `NỢ TIỀN (hạn ${r.date})` : r.status === "maint" ? "BẢO TRÌ" : "ĐÃ NỘP ĐỦ";
+                lines.push(`- Căn ${r.room}: ${r.modelType} | ${r.area}m² | Giá ${r.price} đ/tháng | Khách thuê: ${r.tenant} | Trạng thái: ${st}`);
+            });
+
+            if (typeof currentTenants !== "undefined" && currentTenants.length > 0) {
+                lines.push(`\n=== 2. HỒ SƠ DANH BẠ CƯ DÂN ===`);
+                currentTenants.forEach(t => {
+                    lines.push(`- ${t.id}: ${t.name} (Phòng ${t.room}) | SĐT: ${t.phone} | CCCD: ${t.idCard} | Email: ${t.email}`);
+                });
             }
 
-            if (currentRole === "staff" || currentRole === "admin") {
-                if (typeof currentMaint !== "undefined") {
-                    lines.push("Phiếu bảo trì: " + (currentMaint.map(m => `${m.room || ""} ${m.issue || m.title || ""} [${m.status || ""}]`).join("; ") || "không có"));
-                }
-                lines.push("Căn trống: " + (empty.map(r => `${r.room} (${r.modelType}, ${r.area}m², ${r.price} đ)`).join("; ") || "không có"));
+            if (typeof currentContracts !== "undefined" && currentContracts.length > 0) {
+                lines.push(`\n=== 3. QUẢN LÝ HỢP ĐỒNG THUÊ ===`);
+                currentContracts.forEach(c => {
+                    lines.push(`- Mã ${c.id}: Căn ${c.room} | Khách: ${c.tenant} | Kỳ hạn: ${c.start} đến ${c.end} | Tiền cọc: ${c.deposit} đ | Tình trạng: ${c.status}`);
+                });
             }
 
-            if (typeof currentContracts !== "undefined") {
-                lines.push("Hợp đồng: " + currentContracts.map(c => `${c.id || ""} căn ${c.room || ""} khách ${c.tenant || ""} hết hạn ${c.end || c.endDate || "?"}`).join("; "));
+            if (typeof currentVehicles !== "undefined" && currentVehicles.length > 0) {
+                lines.push(`\n=== 4. PHƯƠNG TIỆN & THẺ XE (RFID) ===`);
+                currentVehicles.forEach(v => {
+                    lines.push(`- Mã thẻ ${v.cardId}: Căn ${v.room} (${v.resident}) | Loại: ${v.vehicleType} ${v.brand} | Biển số: ${v.plate} | Thẻ: ${v.cardType}`);
+                });
             }
-            lines.push("Biểu phí: điện 3.500 đ/kWh, nước 25.000 đ/m³, xe máy 100.000 đ/tháng, ô tô 1.200.000 đ/tháng, phí quản lý 15.000 đ/m²/tháng.");
+
+            if (typeof currentServices !== "undefined" && currentServices.length > 0) {
+                lines.push(`\n=== 5. CHỈ SỐ ĐIỆN NƯỚC & DỊCH VỤ THÁNG NÀY ===`);
+                currentServices.forEach(s => {
+                    const elecUsed = s.newElec - s.oldElec;
+                    const waterUsed = s.newWater - s.oldWater;
+                    lines.push(`- Căn ${s.room} (${s.tenant}): Điện cũ ${s.oldElec} -> mới ${s.newElec} (${elecUsed} kWh) | Nước cũ ${s.oldWater} -> mới ${s.newWater} (${waterUsed} m³) | ${s.bikes} xe máy, ${s.cars} ô tô | Phí QL: ${s.manageFee.toLocaleString('vi-VN')} đ | Rác: ${s.trashFee.toLocaleString('vi-VN')} đ`);
+                });
+            }
+
+            if (typeof currentMaint !== "undefined" && currentMaint.length > 0) {
+                lines.push(`\n=== 6. PHIẾU BẢO TRÌ & SỰ CỐ KỸ THUẬT ===`);
+                currentMaint.forEach(m => {
+                    lines.push(`- ${m.id}: Căn ${m.room} | Sự cố: ${m.desc || m.issue || ""} | Mức độ: ${m.priority} | Trạng thái: ${m.status} (ngày ${m.date})`);
+                });
+            }
+
+            if (typeof currentCashflow !== "undefined" && currentCashflow.length > 0) {
+                const inc = currentCashflow.filter(c => c.type === "income").reduce((s, c) => s + c.amount, 0);
+                const exp = currentCashflow.filter(c => c.type === "expense").reduce((s, c) => s + c.amount, 0);
+                lines.push(`\n=== 7. SỔ QUỸ & TÀI CHÍNH ===`);
+                lines.push(`- Tổng thu: ${inc.toLocaleString("vi-VN")} đ | Tổng chi: ${exp.toLocaleString("vi-VN")} đ | Tồn quỹ hiện tại: ${(inc - exp).toLocaleString("vi-VN")} đ`);
+            }
+
+            lines.push(`\n=== 8. BIỂU PHÍ CHUẨN & CÚ PHÁP THANH TOÁN VIETQR ===`);
+            lines.push(`- Điện: 3.500 đ/kWh | Nước: 25.000 đ/m³ | Xe máy: 100.000 đ/xe/tháng | Ô tô: 1.200.000 đ/xe/tháng | Phí QL: 15.000 đ/m²/tháng | Rác: 120.000 đ/tháng.`);
+            lines.push(`- Thanh toán: MB Bank hoặc Vietcombank | STK: 99998888ICTU | Cú pháp: ICTU [Mã_Phòng] (Ví dụ: ICTU A101).`);
+
             return lines.join("\n");
         }
 
         async function checkAiHealth() {
             const badge = document.getElementById("gemini-status-badge");
             if (!badge) return;
-            badge.innerText = "⏳ Đang kiểm tra kết nối Gemini...";
+            badge.innerText = "⏳ Đang kết nối Gemini AI...";
             try {
                 const res = await fetch(`${AI_API_BASE}/api/v1/ai/health`);
                 const d = await res.json();
-                badge.innerText = d.connected
-                    ? "🟢 Gemini Live - đã kết nối máy chủ Google"
-                    : `🔴 Chưa kết nối Gemini: ${d.reason}`;
+                if (d.connected) {
+                    badge.innerHTML = `<span class="text-success"><i class="fa-solid fa-circle-check me-1"></i> Gemini Live (Google AI Sẵn Sàng & Trực Tuyến)</span>`;
+                } else {
+                    badge.innerHTML = `<span class="text-warning"><i class="fa-solid fa-database me-1"></i> Đang bật Chế độ Tra Cứu Logic Database (Gemini API tạm bận)</span>`;
+                }
                 badge.title = d.reason || "";
             } catch (e) {
-                badge.innerText = "🔴 Chưa chạy máy chủ FastAPI (uvicorn app.main:app --reload)";
+                badge.innerHTML = `<span class="text-danger"><i class="fa-solid fa-circle-xmark me-1"></i> Chưa kết nối máy chủ backend FastAPI</span>`;
             }
         }
 
@@ -1790,38 +2160,47 @@ function populateRoomSelects() {
         }
 
         function loadSampleContract() {
-            document.getElementById('contract_text').value = `HỢP ĐỒNG CHO THUÊ CĂN HỘ ICTU TOWER\nBên A: BQL Tòa nhà ICTU. Bên B: Bà Trần Thị Bích (CCCD: 034195005678).\nĐiều 1: Cho thuê Căn A102 (72m2, 2PN Deluxe).\nĐiều 2: Giá thuê 10.000.000 VNĐ/tháng. Hạn nộp ngày 05 hàng tháng.\nĐiều 3: Tiền cọc 20.000.000 VNĐ.\nĐiều 4: Thời hạn thuê 12 tháng, từ 01/09/2025 đến 30/09/2026.\nĐiều 5: Điện 3.500đ/kWh, nước 25.000đ/m3, xe máy 100k, ô tô 1.200k.`;
+            document.getElementById('contract_text').value = `HỢP ĐỒNG CHO THUÊ CĂN HỘ ICTU TOWER
+Bên A: BQL Tòa nhà ICTU. Đại diện: Ông Nguyễn Văn Quản Trị.
+Bên B: Bà Trần Thị Bích (CCCD: 034195005678, SĐT: 0988 765 432).
+Điều 1: Cho thuê Căn A102 (diện tích 72m2, loại phòng 2PN Deluxe, full nội thất cao cấp).
+Điều 2: Giá thuê 10.000.000 VNĐ/tháng. Hạn nộp tiền ngày 05 hàng tháng qua VietQR.
+Điều 3: Tiền đặt cọc bảo đảm là 20.000.000 VNĐ (tương đương 02 tháng tiền thuê).
+Điều 4: Thời hạn thuê 12 tháng, bắt đầu từ ngày 01/09/2025 đến hết ngày 30/09/2026.
+Điều 5: Đơn giá dịch vụ: Điện 3.500 đ/kWh, nước sạch 25.000 đ/m3, xe máy 100.000 đ/tháng, ô tô 1.200.000 đ/tháng.
+Điều 6: Trách nhiệm: Bên B thanh toán đúng hạn; Bên A bảo đảm an ninh và hỗ trợ kỹ thuật bảo trì 24/7.`;
         }
 
         async function analyzeContract() {
             const out = document.getElementById('contract-output');
+            const badgeContainer = document.getElementById('contract-badge-container');
+            const footerBtns = document.getElementById('contract-footer-btns');
             const text = (document.getElementById('contract_text').value || '').trim();
 
             if (text.length < 30) {
-                out.innerHTML = `<div class="alert alert-warning small mb-0">Vui lòng dán nội dung hợp đồng (bấm "Nạp HĐ Mẫu" để thử nhanh).</div>`;
+                out.innerHTML = `<div class="alert alert-warning small mb-0"><i class="fa-solid fa-triangle-exclamation me-1"></i> Vui lòng dán nội dung hợp đồng (bấm "Nạp HĐ Mẫu" để thử nhanh).</div>`;
                 return;
             }
 
-            out.innerHTML = `<div class="text-center my-4"><div class="spinner-border text-primary"></div>
-                <p class="small text-muted mt-2">Đang phân tích hợp đồng theo góc nhìn ${currentRole === 'accountant' ? 'Kế Toán' : currentRole === 'staff' ? 'Kỹ Thuật' : 'Ban Giám Đốc'}...</p></div>`;
+            out.innerHTML = `<div class="text-center my-5 py-4"><div class="spinner-border text-primary"></div>
+                <p class="small text-muted mt-3">Đang bóc tách & thẩm định hợp đồng theo góc nhìn ${currentRole === 'accountant' ? 'Kế Toán' : currentRole === 'staff' ? 'Kỹ Thuật' : 'Ban Giám Đốc'}...</p></div>`;
 
             try {
                 const r = await callAiApi("summarize-contract", { contract_text: text });
-                out.innerHTML = `
-                    <div class="p-3 bg-white rounded-3 shadow-sm border small">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="fw-bold text-primary mb-0"><i class="fa-solid fa-file-circle-check me-2"></i>Kết quả bóc tách hợp đồng</h6>
-                            ${aiSourceBadge(r)}
-                        </div>
-                        <div class="border-top pt-2">${aiToHtml(r.data)}</div>
-                        <button class="btn btn-primary btn-sm fw-bold mt-3" onclick="switchAiSubTab('sub-reminder')">
-                            <i class="fa-solid fa-share me-1"></i> Soạn thông báo từ hợp đồng này</button>
-                    </div>`;
+                if (badgeContainer) badgeContainer.innerHTML = aiSourceBadge(r);
+                out.innerHTML = `<div class="small line-height-lg p-1">${aiToHtml(r.data)}</div>`;
+                if (footerBtns) footerBtns.style.setProperty('display', 'flex', 'important');
                 if (typeof logActivity === "function") logActivity("Phân tích hợp đồng AI", `Nguồn: ${r.source}`);
             } catch (e) {
-                out.innerHTML = `<div class="alert alert-danger small mb-0"><strong>Không gọi được máy chủ AI.</strong><br>
-                    ${e.message}<br>Kiểm tra: đã chạy <code>uvicorn app.main:app --reload</code> chưa?</div>`;
+                out.innerHTML = `<div class="alert alert-danger small mb-0"><strong>Không gọi được máy chủ AI:</strong> ${e.message}</div>`;
             }
+        }
+
+        function copyContractOutput() {
+            const out = document.getElementById('contract-output');
+            if (!out) return;
+            navigator.clipboard.writeText(out.innerText);
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Đã sao chép kết quả!', showConfirmButton: false, timer: 1500 });
         }
 
         function toggleNoticeFields() {
@@ -1832,6 +2211,7 @@ function populateRoomSelects() {
 
         async function generateReminder() {
             const out = document.getElementById('reminder-output');
+            const badgeContainer = document.getElementById('reminder-badge-container');
             const payload = {
                 tenant_name: document.getElementById('tenant_name').value.trim(),
                 apartment: document.getElementById('room_number').value.trim(),
@@ -1846,30 +2226,27 @@ function populateRoomSelects() {
                 return;
             }
 
-            out.innerHTML = `<div class="text-center my-4"><div class="spinner-border text-success"></div>
-                <p class="small text-muted mt-2">AI đang soạn thông báo...</p></div>`;
+            out.innerHTML = `<div class="text-center my-5 py-4"><div class="spinner-border text-success"></div>
+                <p class="small text-muted mt-3">AI đang soạn thông báo...</p></div>`;
 
             try {
                 const r = await callAiApi("generate-notice", payload);
+                if (badgeContainer) badgeContainer.innerHTML = aiSourceBadge(r);
                 out.innerHTML = `
-                    <div class="p-3 bg-white rounded-3 shadow-sm border small">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="fw-bold text-success mb-0"><i class="fa-solid fa-message me-2"></i>Bản thảo Zalo/SMS</h6>
-                            ${aiSourceBadge(r)}
-                        </div>
-                        <textarea class="form-control mb-2 small" rows="9" id="generated_msg_text">${r.data.replace(/<[^>]+>/g, "")}</textarea>
+                    <div class="d-flex flex-column h-100">
+                        <textarea class="form-control flex-grow-1 mb-3 small p-3 bg-light border-0" style="resize: none; font-size: 0.88rem; line-height: 1.6; border-radius: 8px;" id="generated_msg_text">${r.data.replace(/<[^>]+>/g, "")}</textarea>
                         <div class="d-flex gap-2">
-                            <button class="btn btn-outline-secondary btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('generated_msg_text').value); Swal.fire('Đã chép','Đã sao chép nội dung.','success');">
+                            <button class="btn btn-outline-secondary btn-sm rounded-pill" onclick="navigator.clipboard.writeText(document.getElementById('generated_msg_text').value); Swal.fire('Đã chép','Đã sao chép nội dung.','success');">
                                 <i class="fa-solid fa-copy me-1"></i> Sao chép</button>
-                            <button class="btn btn-outline-primary btn-sm" onclick="generateReminder()">
+                            <button class="btn btn-outline-primary btn-sm rounded-pill" onclick="generateReminder()">
                                 <i class="fa-solid fa-rotate me-1"></i> Soạn lại</button>
-                            <button class="btn btn-success btn-sm flex-grow-1 fw-bold" onclick="sendNoticeToTenant('${payload.apartment}')">
+                            <button class="btn btn-success btn-sm flex-grow-1 fw-bold rounded-pill" onclick="sendNoticeToTenant('${payload.apartment}')">
                                 <i class="fa-solid fa-paper-plane me-1"></i> Gửi tin</button>
                         </div>
                     </div>`;
                 if (typeof logActivity === "function") logActivity("Soạn thông báo AI", `Căn ${payload.apartment} - nguồn ${r.source}`);
             } catch (e) {
-                out.innerHTML = `<div class="alert alert-danger small mb-0"><strong>Không gọi được máy chủ AI.</strong><br>${e.message}</div>`;
+                out.innerHTML = `<div class="alert alert-danger small mb-0"><strong>Không gọi được máy chủ AI:</strong> ${e.message}</div>`;
             }
         }
 
@@ -1902,8 +2279,7 @@ function populateRoomSelects() {
 
             try {
                 const r = await callAiApi("chat", { question: q, context: buildLiveContext() });
-                document.getElementById(typingId).innerHTML = aiToHtml(r.data) +
-                    (r.source === "gemini" ? "" : `<br><small class="text-muted">(${r.source})</small>`);
+                document.getElementById(typingId).innerHTML = aiToHtml(r.data);
             } catch (e) {
                 document.getElementById(typingId).innerHTML =
                     `<span class="text-danger">Không kết nối được máy chủ AI: ${e.message}</span>`;
@@ -1956,9 +2332,267 @@ function populateRoomSelects() {
             }
         }
 
+        // ==============================================
+        // TÍNH NĂNG 1: KHÔI PHỤC DỮ LIỆU DEMO BAN ĐẦU
+        // ==============================================
+        async function resetDemoData() {
+            const res = await Swal.fire({
+                title: 'Khôi Phục Dữ Liệu Demo?',
+                html: 'Toàn bộ <strong>30 căn hộ, hợp đồng, cư dân, xe cộ và dòng tiền</strong> sẽ được đưa về trạng thái dữ liệu mẫu chuẩn ban đầu để bạn thuyết trình hoặc kiểm thử.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#4f46e5',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: '<i class="fa-solid fa-rotate-left me-1"></i> Khôi Phục Ngay',
+                cancelButtonText: 'Hủy'
+            });
+
+            if (res.isConfirmed) {
+                // Xóa toàn bộ key localStorage
+                localStorage.removeItem("ictu_rooms_pro_v3");
+                localStorage.removeItem("ictu_tenants_v1");
+                localStorage.removeItem("ictu_contracts_v1");
+                localStorage.removeItem("ictu_maint_v1");
+                localStorage.removeItem("ictu_services_v1");
+                localStorage.removeItem("ictu_vehicles_v1");
+                localStorage.removeItem("ictu_cashflow_v1");
+                localStorage.removeItem("ictu_audit_logs_v1");
+
+                // Gán lại memory từ initial arrays
+                currentRooms = JSON.parse(JSON.stringify(initialRooms));
+                currentTenants = JSON.parse(JSON.stringify(initialTenants));
+                currentContracts = JSON.parse(JSON.stringify(initialContracts));
+                currentMaint = JSON.parse(JSON.stringify(initialMaintenance));
+                currentServices = JSON.parse(JSON.stringify(initialServices));
+                currentVehicles = JSON.parse(JSON.stringify(initialVehicles));
+                currentCashflow = JSON.parse(JSON.stringify(initialCashflow));
+                currentAuditLogs = JSON.parse(JSON.stringify(initialAuditLogs));
+
+                saveData();
+                renderAllModules();
+                if (typeof checkAiHealth === 'function') checkAiHealth();
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Đã Khôi Phục Dữ Liệu!',
+                    text: 'Dữ liệu demo đã được tái thiết lập về trạng thái chuẩn.',
+                    timer: 1600,
+                    showConfirmButton: false
+                });
+            }
+        }
+
+        // ==============================================
+        // TÍNH NĂNG 3: BỘ LỌC & TÌM KIẾM NHANH TOÀN CỤC (GLOBAL SEARCH)
+        // ==============================================
+        function handleGlobalSearch(q) {
+            const resBox = document.getElementById('globalSearchResults');
+            if (!resBox) return;
+            const query = (q || '').trim().toLowerCase();
+            if (!query) {
+                resBox.style.display = 'none';
+                resBox.innerHTML = '';
+                return;
+            }
+
+            const matchedRooms = currentRooms.filter(r => 
+                r.room.toLowerCase().includes(query) || 
+                r.tenant.toLowerCase().includes(query) || 
+                r.modelType.toLowerCase().includes(query)
+            ).slice(0, 4);
+
+            const matchedTenants = currentTenants.filter(t => 
+                t.name.toLowerCase().includes(query) || 
+                t.phone.toLowerCase().includes(query) || 
+                t.idCard.toLowerCase().includes(query) ||
+                t.room.toLowerCase().includes(query)
+            ).slice(0, 4);
+
+            const matchedVehicles = currentVehicles.filter(v => 
+                v.plate.toLowerCase().includes(query) || 
+                v.resident.toLowerCase().includes(query) || 
+                v.cardId.toLowerCase().includes(query) || 
+                v.brand.toLowerCase().includes(query) || 
+                v.room.toLowerCase().includes(query)
+            ).slice(0, 4);
+
+            const matchedContracts = currentContracts.filter(c => 
+                c.id.toLowerCase().includes(query) || 
+                c.tenant.toLowerCase().includes(query) || 
+                c.room.toLowerCase().includes(query)
+            ).slice(0, 3);
+
+            let html = '';
+            const totalMatches = matchedRooms.length + matchedTenants.length + matchedVehicles.length + matchedContracts.length;
+
+            if (totalMatches === 0) {
+                html = `<div class="p-3 text-center text-muted small"><i class="fa-solid fa-magnifying-glass me-1"></i> Không tìm thấy kết quả phù hợp cho <strong>"${q}"</strong></div>`;
+            } else {
+                if (matchedRooms.length > 0) {
+                    html += `<div class="px-2 py-1 bg-light rounded text-uppercase fw-bold text-muted" style="font-size: 0.7rem;"><i class="fa-solid fa-door-open text-primary me-1"></i> Căn Hộ (${matchedRooms.length})</div>`;
+                    matchedRooms.forEach(r => {
+                        const statusBadge = r.status === 'empty' ? '<span class="badge badge-soft-warning">Trống</span>' : (r.status === 'debt' ? '<span class="badge badge-soft-danger">Nợ tiền</span>' : '<span class="badge badge-soft-success">Đang ở</span>');
+                        html += `
+                            <div class="p-2 border-bottom d-flex justify-content-between align-items-center hover-bg-light cursor-pointer rounded" onclick="selectSearchResult('room', '${r.room}')">
+                                <div>
+                                    <strong class="text-primary me-1">Phòng ${r.room}</strong>
+                                    <span class="text-dark small">${r.tenant}</span>
+                                    <small class="text-muted d-block">${r.modelType} • ${r.price} đ/th</small>
+                                </div>
+                                <div>${statusBadge}</div>
+                            </div>`;
+                    });
+                }
+
+                if (matchedTenants.length > 0) {
+                    html += `<div class="px-2 py-1 mt-2 bg-light rounded text-uppercase fw-bold text-muted" style="font-size: 0.7rem;"><i class="fa-solid fa-users text-success me-1"></i> Cư Dân (${matchedTenants.length})</div>`;
+                    matchedTenants.forEach(t => {
+                        html += `
+                            <div class="p-2 border-bottom d-flex justify-content-between align-items-center hover-bg-light cursor-pointer rounded" onclick="selectSearchResult('tenant', '${t.room}')">
+                                <div>
+                                    <strong class="text-dark">${t.name}</strong> <span class="badge bg-secondary">Căn ${t.room}</span>
+                                    <small class="text-muted d-block">SĐT: ${t.phone} • CCCD: ${t.idCard}</small>
+                                </div>
+                                <i class="fa-solid fa-chevron-right text-muted small"></i>
+                            </div>`;
+                    });
+                }
+
+                if (matchedVehicles.length > 0) {
+                    html += `<div class="px-2 py-1 mt-2 bg-light rounded text-uppercase fw-bold text-muted" style="font-size: 0.7rem;"><i class="fa-solid fa-car text-info me-1"></i> Thẻ & Phương Tiện (${matchedVehicles.length})</div>`;
+                    matchedVehicles.forEach(v => {
+                        html += `
+                            <div class="p-2 border-bottom d-flex justify-content-between align-items-center hover-bg-light cursor-pointer rounded" onclick="selectSearchResult('vehicle', '${v.room}')">
+                                <div>
+                                    <strong class="text-danger">${v.plate}</strong> <span class="text-muted small">(${v.brand})</span>
+                                    <small class="text-muted d-block">${v.resident} • Căn ${v.room} • Thẻ: ${v.cardId}</small>
+                                </div>
+                                <span class="badge bg-info bg-opacity-10 text-info">${v.vehicleType}</span>
+                            </div>`;
+                    });
+                }
+
+                if (matchedContracts.length > 0) {
+                    html += `<div class="px-2 py-1 mt-2 bg-light rounded text-uppercase fw-bold text-muted" style="font-size: 0.7rem;"><i class="fa-solid fa-file-contract text-warning me-1"></i> Hợp Đồng (${matchedContracts.length})</div>`;
+                    matchedContracts.forEach(c => {
+                        html += `
+                            <div class="p-2 d-flex justify-content-between align-items-center hover-bg-light cursor-pointer rounded" onclick="selectSearchResult('contract', '${c.id}')">
+                                <div>
+                                    <strong class="text-primary">${c.id}</strong> <span class="text-muted small">(Căn ${c.room} - ${c.tenant})</span>
+                                    <small class="text-muted d-block">Kỳ hạn đến: ${c.end} • Cọc: ${c.deposit} đ</small>
+                                </div>
+                                <span class="badge bg-success bg-opacity-10 text-success">${c.status}</span>
+                            </div>`;
+                    });
+                }
+            }
+
+            resBox.innerHTML = html;
+            resBox.style.display = 'block';
+        }
+
+        function selectSearchResult(type, param) {
+            const resBox = document.getElementById('globalSearchResults');
+            const searchInput = document.getElementById('globalSearchInput');
+            if (resBox) resBox.style.display = 'none';
+            if (searchInput) searchInput.value = '';
+
+            if (type === 'room') {
+                switchTab('tab-rooms', document.querySelector("a[onclick*='tab-rooms']"));
+            } else if (type === 'tenant') {
+                switchTab('tab-tenants', document.querySelector("a[onclick*='tab-tenants']"));
+            } else if (type === 'vehicle') {
+                switchTab('tab-vehicles', document.querySelector("a[onclick*='tab-vehicles']"));
+            } else if (type === 'contract') {
+                openContractDetail(param);
+            }
+        }
+
+        // Lắng nghe phím tắt Ctrl + K mở tìm kiếm nhanh
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                const inp = document.getElementById('globalSearchInput');
+                if (inp) {
+                    inp.focus();
+                    inp.select();
+                }
+            }
+        });
+
+        // Đóng dropdown tìm kiếm khi click ra ngoài
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#globalSearchInput') && !e.target.closest('#globalSearchResults')) {
+                const resBox = document.getElementById('globalSearchResults');
+                if (resBox) resBox.style.display = 'none';
+            }
+        });
+
+        // ==============================================
+        // TÍNH NĂNG 4: XUẤT BÁO CÁO DOANH THU & SỔ QUỸ RA EXCEL
+        // ==============================================
+        function exportRevenueExcel() {
+            if (!currentCashflow || currentCashflow.length === 0) {
+                Swal.fire('Thông báo', 'Chưa có dữ liệu sổ quỹ để xuất báo cáo.', 'info');
+                return;
+            }
+
+            // Tiêu đề cột tiếng Việt
+            const headers = ["Mã Giao Dịch", "Ngày Ghi Nhận", "Phân Loại", "Khoản Mục Thu / Chi", "Đối Tác / Căn Hộ", "Số Tiền (VNĐ)", "Người Lập Phiếu"];
+            
+            // Format từng dòng
+            const rows = currentCashflow.map(c => [
+                `"${c.id}"`,
+                `"${c.date}"`,
+                `"${c.type === 'income' ? 'Khoản Thu' : 'Khoản Chi'}"`,
+                `"${(c.category || '').replace(/"/g, '""')}"`,
+                `"${(c.partner || '').replace(/"/g, '""')}"`,
+                c.amount,
+                `"${c.actor || ''}"`
+            ]);
+
+            const totalIncome = currentCashflow.filter(c => c.type === 'income').reduce((s, c) => s + c.amount, 0);
+            const totalExpense = currentCashflow.filter(c => c.type === 'expense').reduce((s, c) => s + c.amount, 0);
+            const balance = totalIncome - totalExpense;
+
+            // Dòng tổng kết tài chính
+            rows.push([]);
+            rows.push(["\"--- TỔNG KẾT DOANH THU SỔ QUỸ ---\"", "\"\"", "\"\"", "\"\"", "\"\"", "\"\"", "\"\""]);
+            rows.push(["\"TỔNG THỰC THU\"", "\"\"", "\"THU\"", "\"Toàn bộ khoản thu\"", "\"ICTU Tower\"", totalIncome, "\"Kế Toán\""]);
+            rows.push(["\"TỔNG CHI PHÍ\"", "\"\"", "\"CHI\"", "\"Toàn bộ chi phí vận hành\"", "\"Đối tác & EVN/Schindler\"", totalExpense, "\"Kế Toán\""]);
+            rows.push(["\"TỒN QUỸ HIỆN TẠI\"", "\"\"", "\"TỒN\"", "\"Số dư quỹ khả dụng\"", "\"Ban Quản Lý\"", balance, "\"Giám Đốc\""]);
+
+            // Tạo CSV content với UTF-8 BOM (\uFEFF)
+            const csvContent = "\uFEFF" + [headers.join(",")].concat(rows.map(r => r.join(","))).join("\r\n");
+            
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            const today = new Date().toISOString().split('T')[0];
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Bao_Cao_Doanh_Thu_So_Quy_${today}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            if (typeof logActivity === "function") {
+                logActivity("Xuất báo cáo", `Đã xuất ${currentCashflow.length} bút toán thu chi ra file Excel`);
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Xuất Báo Cáo Excel Thành Công!',
+                html: `Tệp <strong>Bao_Cao_Doanh_Thu_So_Quy_${today}.csv</strong> đã được tải xuống.<br><small class="text-muted">Định dạng hỗ trợ mở trực tiếp bằng Microsoft Excel & Google Sheets hiển thị font tiếng Việt chuẩn 100%.</small>`,
+                confirmButtonColor: '#4f46e5'
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             initEnterpriseSession();
             checkAiHealth();
+            checkDbHealth();
+            loadFromPostgreSQL();
         });
     </script>
 </body>
