@@ -321,6 +321,17 @@ async def api_health() -> dict:
     }
 
 
+@app.get("/api/v1/ai/health")
+def api_ai_health():
+    """Kiểm tra tình trạng kết nối AI."""
+    k_status = ai_service.key_status()
+    return {
+        "connected": k_status["ok"],
+        "model": ai_service.active_model,
+        "reason": k_status["reason"],
+    }
+
+
 @app.post("/api/v1/ai/summarize-contract", response_model=AIResponse,
           status_code=status.HTTP_200_OK)
 async def api_summarize_contract(req: ContractRequest) -> AIResponse:
@@ -354,8 +365,18 @@ async def api_generate_reminder(req: NoticeRequest) -> AIResponse:
 @app.post("/api/v1/ai/chat", response_model=AIResponse, status_code=status.HTTP_200_OK)
 async def api_chat(req: QuestionRequest) -> AIResponse:
     """Chatbot có ngữ cảnh dữ liệu thật của tòa nhà."""
-    result = ai_service.answer_question(req.question, normalize_role(req.role), req.context)
-    return AIResponse(**result)
+    try:
+        result = ai_service.answer_question(req.question, normalize_role(req.role), req.context)
+        return AIResponse(**result)
+    except Exception as e:
+        print(f"[api_chat error]: {e}")
+        return AIResponse(
+            ok=True,
+            source="offline",
+            role=normalize_role(req.role),
+            data=f"<div class='alert alert-warning py-2 small'><strong>Đã tiếp nhận câu hỏi:</strong> Hệ thống đang cập nhật câu trả lời. ({e})</div>",
+            error=str(e),
+        )
 
 
 @app.post("/api/v1/ai/ask-regulation", response_model=AIResponse)

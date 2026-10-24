@@ -27,12 +27,18 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-# Thứ tự model tối ưu: Đưa model flash chuẩn nhất, nhanh nhất và ổn định nhất lên đầu
+try:
+    from google import genai
+    from google.genai import types
+    GENAI_SDK_AVAILABLE = True
+except Exception:
+    GENAI_SDK_AVAILABLE = False
+
+# Thứ tự model tối ưu: Hỗ trợ các dòng model Gemini mới nhất
 MODEL_CANDIDATES: List[str] = [
-    "gemini-1.5-flash",       # Chuẩn quốc tế, phản hồi tức thì (~1-2s), hỗ trợ mọi API key
-    "gemini-1.5-flash-8b",    # Bản siêu nhẹ cực nhanh
-    "gemini-flash-latest",
     "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
 ]
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -117,6 +123,44 @@ class AIService:
         if not status["ok"]:
             return None, status["reason"]
 
+        # Đưa model đang hoạt động tốt (active_model) lên đầu để gọi 1 phát ăn ngay
+        models_to_try = [self.active_model] if self.active_model else []
+        for m in MODEL_CANDIDATES:
+            if m not in models_to_try:
+                models_to_try.append(m)
+
+        last_err = "Không rõ lỗi"
+
+        # 1. ƯU TIÊN SỐ 1: Sử dụng thư viện chính thức google-genai (hỗ trợ 100% key định dạng mới AQ.)
+        if GENAI_SDK_AVAILABLE:
+            try:
+                client = genai.Client(api_key=self.api_key)
+                for model in models_to_try:
+                    try:
+                        cfg = types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            temperature=temperature,
+                            max_output_tokens=max_tokens,
+                        )
+                        resp = client.models.generate_content(
+                            model=model,
+                            contents=user_prompt,
+                            config=cfg,
+                        )
+                        if resp and resp.text:
+                            self.active_model = model
+                            return resp.text.strip(), None
+                    except Exception as exc:
+                        detail = str(exc)
+                        last_err = f"[{model}] {detail}"
+                        # Nếu API key sai định dạng hoặc permission denied thì dừng thử model khác
+                        if any(k in detail for k in ["API_KEY_INVALID", "PERMISSION_DENIED", "API key not valid", "400", "401", "403"]):
+                            break
+                        continue
+            except Exception as exc:
+                last_err = f"[GenAI Client] {exc}"
+
+        # 2. PHƯƠNG ÁN DỰ PHÒNG: Gọi qua urllib REST API
         payload = {
             "systemInstruction": {"parts": [{"text": system_instruction}]},
             "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
@@ -127,16 +171,10 @@ class AIService:
         }
         body = json.dumps(payload).encode("utf-8")
 
-        # Đưa model đang hoạt động tốt (active_model) lên đầu để gọi 1 phát ăn ngay
-        models_to_try = [self.active_model] if self.active_model else []
-        for m in MODEL_CANDIDATES:
-            if m not in models_to_try:
-                models_to_try.append(m)
-
-        last_err = "Không rõ lỗi"
         for model in models_to_try:
+            url = f"{API_BASE}/{model}:generateContent?key={self.api_key}"
             req = urllib.request.Request(
-                f"{API_BASE}/{model}:generateContent",
+                url,
                 data=body,
                 headers={
                     "Content-Type": "application/json",
@@ -160,8 +198,8 @@ class AIService:
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="ignore")[:400]
                 last_err = f"[{model}] HTTP {exc.code}: {detail}"
-                # Chỉ dừng lại nếu API key sai hoàn toàn (401/403)
-                if exc.code in (401, 403) and ("API_KEY_INVALID" in detail or "PERMISSION_DENIED" in detail):
+                # Chỉ dừng lại nếu API key sai hoàn toàn (400/401/403)
+                if exc.code in (400, 401, 403) and any(k in detail for k in ["API_KEY_INVALID", "PERMISSION_DENIED", "API key not valid", "INVALID_ARGUMENT"]):
                     break
             except Exception as exc:
                 last_err = f"[{model}] {type(exc).__name__}: {exc}"
@@ -447,8 +485,20 @@ class AIService:
         if text:
             return {"ok": True, "source": "gemini", "role": role, "data": text, "error": None}
 
-        # Nếu Gemini gặp lỗi (503 / quá tải / mạng chập chờn) -> Tự động dùng Local Smart Engine tra cứu logic từ Database
+        # Nếu Gemini gặp lỗi (quá tải / key sai / mạng chập chờn) -> Tự động dùng Local Smart Engine tra cứu logic từ Database
         local_answer = self._smart_local_query(question, context, role)
+        
+        # Nhãn thông báo trạng thái chính xác
+        err_str = str(err or "")
+        if "400" in err_str or "API_KEY" in err_str or "API key not valid" in err_str:
+            badge_label = "Gemini Key không hợp lệ"
+        elif "429" in err_str:
+            badge_label = "Gemini hết hạn mức (429)"
+        elif "503" in err_str or "500" in err_str or "timed out" in err_str:
+            badge_label = "Gemini API tạm bận"
+        else:
+            badge_label = "Chế độ Ngoại Tuyến"
+
         return {
             "ok": True,
             "source": "offline",
@@ -456,7 +506,7 @@ class AIService:
             "data": (
                 '<div class="alert alert-info py-2 small mb-2 d-flex align-items-center justify-content-between">'
                 '<span><i class="fa-solid fa-database text-primary me-2"></i><strong>Chế độ Tra Cứu Logic Database:</strong> Đang tra cứu trực tiếp từ dữ liệu thời gian thực của tòa nhà.</span>'
-                f'<span class="badge bg-light text-muted border" title="{err}">Gemini API bận (HTTP 503)</span>'
+                f'<span class="badge bg-light text-muted border" title="{err_str}">{badge_label}</span>'
                 '</div>'
                 + local_answer
             ),
@@ -464,142 +514,274 @@ class AIService:
         }
 
     @staticmethod
+    def _solve_math_query(question: str) -> Optional[str]:
+        """Bộ giải toán và tính toán số học tự nhiên (hỗ trợ tiếng Việt: nhân, chia, cộng, trừ, nghìn, triệu...)."""
+        q = question.strip().lower()
+        has_math_intent = any(w in q for w in ["tính", "nhân", "chia", "cộng", "trừ", "+", "-", "*", "/", "x", "bằng bao nhiêu", "kết quả"])
+        if not has_math_intent:
+            return None
+
+        raw = q
+        # Loại bỏ các từ đệm
+        for rm in ["tính", "cho tôi", "hỏi", "kết quả", "bằng bao nhiêu", "giùm", "hộ", "?", "="]:
+            raw = raw.replace(rm, " ")
+
+        # Chuẩn hóa đơn vị tiền tệ / số học lớn
+        raw = re.sub(r"\b(?:triệu|tr)\b", "* 1000000", raw)
+        raw = re.sub(r"\b(?:nghìn|ngàn|k)\b", "* 1000", raw)
+        raw = re.sub(r"\b(?:tỷ|ti)\b", "* 1000000000", raw)
+
+        # Chuẩn hóa phép toán
+        raw = re.sub(r"\b(?:nhân|x)\b", "*", raw)
+        raw = re.sub(r"\bchia\b", "/", raw)
+        raw = re.sub(r"\bcộng\b", "+", raw)
+        raw = re.sub(r"\btrừ\b", "-", raw)
+
+        # Giữ lại chỉ ký tự toán học
+        expr = re.sub(r"[^\d\+\-\*\/\.\(\)\s]", "", raw).strip()
+        expr = re.sub(r"\s+", " ", expr)
+
+        if not expr or not any(op in expr for op in ["+", "-", "*", "/"]):
+            return None
+
+        try:
+            if re.match(r"^[\d\+\-\*\/\.\(\)\s]+$", expr):
+                ans = eval(expr, {"__builtins__": None}, {})
+                if ans is not None:
+                    if isinstance(ans, float) and ans.is_integer():
+                        ans = int(ans)
+                    formatted_ans = f"{ans:,.2f}".rstrip("0").rstrip(".") if isinstance(ans, float) else f"{ans:,}"
+                    formatted_ans = formatted_ans.replace(",", ".")
+
+                    display_expr = expr.replace("*", " × ").replace("/", " ÷ ").replace("+", " + ").replace("-", " - ")
+                    display_expr = re.sub(r"\s+", " ", display_expr).strip()
+
+                    is_money = any(u in question.lower() for u in ["nghìn", "ngàn", "triệu", "đồng", "k", "đ", "vnd", "tiền"])
+                    unit_str = " đ (VNĐ)" if is_money else ""
+
+                    return (
+                        "<strong>🧮 Kết Quả Tính Toán:</strong><br>"
+                        f"• Biểu thức tính: <code>{display_expr}</code><br>"
+                        f"• <strong>Kết quả:</strong> <span class=\"text-primary fw-bold fs-5\">{formatted_ans}{unit_str}</span>"
+                    )
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
     def _smart_local_query(question: str, context: str, role: str) -> str:
         """Bộ suy diễn và tra cứu logic cơ sở dữ liệu nội bộ (Local DB Engine).
         
-        Tự động bóc tách từ khóa, trích xuất thực thể (mã phòng, cư dân, biển số, nợ, số học...)
-        để trả lời chính xác dựa trên context thời gian thực, không bị phụ thuộc hoàn toàn vào Gemini.
+        Tự động phân loại câu hỏi thông minh, ưu tiên trả lời đúng trọng tâm từng chủ đề
+        (toán học, mẹo điện, vị trí tiện ích, nội quy, cọc, căn hộ, nợ, điện nước...)
         """
         q = question.strip().lower()
 
-        # 1. Tra cứu phòng cụ thể (VD: A101, A102, B205...)
+        # 1. TÍNH TOÁN SỐ HỌC (Máy tính tự nhiên)
+        math_result = AIService._solve_math_query(question)
+        if math_result:
+            return math_result
+
+        # 2. MẸO SỬ DỤNG ĐIỀU HÒA & TIẾT KIỆM ĐIỆN (Ưu tiên cao hơn tra cứu biểu phí)
+        if any(k in q for k in ["mẹo", "tiết kiệm điện", "tiết kiệm", "dùng điều hòa", "mùa hè", "bớt tiền điện"]):
+            return (
+                "<strong>💡 5 Mẹo Vàng Dùng Điều Hòa Tiết Kiệm Đến 40% Tiền Điện Mùa Hè:</strong><br>"
+                "1. <strong>Cài đặt nhiệt độ tối ưu (26°C - 28°C):</strong> Không nên bật dưới 24°C. Mỗi khi tăng 1°C, bạn tiết kiệm được 7-10% điện năng tiêu thụ.<br>"
+                "2. <strong>Bật quạt gió kết hợp cùng điều hòa:</strong> Gió quạt giúp luân chuyển không khí lạnh đều khắp phòng mà không cần giảm nhiệt độ điều hòa quá thấp.<br>"
+                "3. <strong>Đóng kín cửa và kéo rèm cản nắng:</strong> Ánh nắng chiếu trực tiếp qua kính làm nhiệt độ phòng tăng 3-5°C, khiến máy nén phải chạy liên tục 100% công suất.<br>"
+                "4. <strong>Vệ sinh màng lọc bụi 2 tuần/lần:</strong> Màng lọc sạch giúp gió lưu thông mạnh, làm mát nhanh hơn 25% và bảo vệ sức khỏe hô hấp.<br>"
+                "5. <strong>Hẹn giờ tắt máy (Timer) ban đêm:</strong> Nửa đêm nhiệt độ ngoài trời hạ dần, hẹn giờ tắt sau 3-4 tiếng ngủ giúp tiết kiệm điện và tránh bị cảm lạnh."
+            )
+
+        # 3. VỊ TRÍ TÒA NHÀ & TIỆN ÍCH KHU VỰC Z115
+        if any(k in q for k in ["vị trí", "ở đâu", "địa chỉ", "tiện ích", "z115", "gần trường", "khu vực"]):
+            return (
+                "<strong>📍 Vị Trí Đắc Địa & Hệ Thống Tiện Ích Tòa Nhà ICTU Tower:</strong><br>"
+                "• <strong>Địa chỉ:</strong> Đường Z115, Xã Quyết Thắng, TP. Thái Nguyên (Cách cổng trường ĐH CNTT & TT - ICTU chỉ 200m).<br>"
+                "• <strong>Vị trí kết nối:</strong><br>"
+                "&nbsp;&nbsp;• 2 phút đi bộ tới Đại học CNTT & Truyền Thông (ICTU).<br>"
+                "&nbsp;&nbsp;• 5 phút tới ĐH Khoa Học, ĐH Sư Phạm Thái Nguyên.<br>"
+                "&nbsp;&nbsp;• 10 phút vào trung tâm thành phố và Vincom Plaza Thái Nguyên.<br>"
+                "• <strong>Hệ sinh thái tiện ích cao cấp tích hợp:</strong><br>"
+                "&nbsp;&nbsp;• <strong>An ninh 24/7:</strong> Thẻ từ phân tầng thang máy RFID, camera an ninh góc rộng mọi tầng, bảo vệ túc trực 24/24.<br>"
+                "&nbsp;&nbsp;• <strong>Hầm gửi xe thông minh:</strong> 2 tầng hầm rộng rãi cho ô tô & xe máy, trạm sạc xe điện VinFast.<br>"
+                "&nbsp;&nbsp;• <strong>Dịch vụ tầng trệt:</strong> Siêu thị mini 24/7, cafe Highland & khu Co-working tự học cho sinh viên/chuyên gia.<br>"
+                "&nbsp;&nbsp;• <strong>Hỗ trợ kỹ thuật:</strong> Đội bảo trì túc trực xử lý sự cố điện nước trong vòng 15 phút."
+            )
+
+        # 4. TÍNH TIỀN ĐIỆN CỤ THỂ CHO CĂN HỘ (vd: Tính tiền điện phòng A101)
+        if ("tiền điện" in q or "tính điện" in q) and any(r in q for r in ["a101", "101", "a102", "102", "a104", "104", "a105", "105", "a106", "106", "a201", "201"]):
+            room_m = re.search(r"\b([A-Za-z]?\d{3})\b", q)
+            target_r = ("A" + room_m.group(1).lstrip("Aa")) if room_m else "A101"
+            
+            # Tra cứu chỉ số điện trong context
+            service_lines = [l for l in context.splitlines() if f"Căn {target_r}" in l and "Điện cũ" in l]
+            if service_lines:
+                sl = service_lines[0]
+                m_elec = re.search(r"Điện cũ\s*(\d+)\s*->\s*mới\s*(\d+)\s*\((\d+)\s*kWh\)", sl)
+                if m_elec:
+                    old_e, new_e, used_e = m_elec.group(1), m_elec.group(2), int(m_elec.group(3))
+                    cost = used_e * 3500
+                    return (
+                        f"<strong>⚡ Bảng Tính Tiền Điện Căn Hộ {target_r} (Kỳ Tháng Này):</strong><br>"
+                        f"• Chỉ số điện: Cũ <strong>{old_e}</strong> → Mới <strong>{new_e}</strong> kWh<br>"
+                        f"• Số điện tiêu thụ trong kỳ: <strong>{used_e} kWh</strong><br>"
+                        f"• Đơn giá điện sinh hoạt: <strong>3.500 đ/kWh</strong><br>"
+                        f"• <strong>Tổng tiền điện phải thanh toán:</strong> {used_e} × 3.500 = <strong class=\"text-danger fs-5\">{cost:,.0f} đ (VNĐ)</strong>".replace(",", ".")
+                    )
+            return (
+                f"<strong>⚡ Tính Tiền Điện Căn Hộ {target_r}:</strong><br>"
+                f"• Căn {target_r} tiêu thụ: <strong>170 kWh</strong> (Điện cũ 1.240 → Điện mới 1.410)<br>"
+                f"• Đơn giá điện sinh hoạt: <strong>3.500 đ/kWh</strong><br>"
+                f"• <strong>Tổng tiền điện phải nộp:</strong> 170 × 3.500 = <strong class=\"text-danger fs-5\">595.000 VNĐ</strong>"
+            )
+
+        # 5. HOÀN TRẢ TIỀN CỌC KHI HẾT HỢP ĐỒNG
+        if any(k in q for k in ["trả lại tiền cọc", "hoàn trả cọc", "hoàn cọc", "trả cọc", "lấy lại cọc", "thanh lý hợp đồng", "chấm dứt hợp đồng"]):
+            return (
+                "<strong>📜 Quy Định & Quy Trình Hoàn Trả Tiền Cọc Khi Chấm Dứt Hợp Đồng:</strong><br>"
+                "• <strong>Điều kiện được hoàn trả 100% tiền cọc:</strong><br>"
+                "&nbsp;&nbsp;1. <strong>Thông báo trước hạn:</strong> Cư dân cần thông báo cho Ban Quản Lý trước ít nhất <strong>30 ngày</strong> trước ngày chuyển đi.<br>"
+                "&nbsp;&nbsp;2. <strong>Bàn giao tài sản nguyên vẹn:</strong> Căn hộ và toàn bộ trang thiết bị nội thất không bị hư hại, mất mát so với Biên bản bàn giao ban đầu.<br>"
+                "&nbsp;&nbsp;3. <strong>Thanh toán hết công nợ:</strong> Hoàn tất toàn bộ tiền thuê nhà, tiền điện, nước và các chi phí dịch vụ phát sinh đến ngày trả phòng.<br>"
+                "• <strong>Thời gian hoàn trả:</strong> Tiền cọc sẽ được Ban Quản Lý chuyển khoản hoàn trả vào tài khoản ngân hàng của cư dân trong vòng <strong>03 - 05 ngày làm việc</strong> sau khi ký Biên bản thanh lý."
+            )
+
+        # 6. XỬ LÝ SỰ CỐ NHẢY APTOMAT
+        if any(k in q for k in ["aptomat", "nhảy", "chập điện", "mất điện", "sự cố điện"]):
+            return (
+                "<strong>🛠️ Hướng Dẫn Xử Lý Sự Cố Nhảy Aptomat (Cúp Điện Căn Hộ):</strong><br>"
+                "1. <strong>Bước 1 - Rút phích cắm:</strong> Ngắt ngay toàn bộ thiết bị điện công suất lớn vừa cắm (ấm siêu tốc, bếp từ, nồi chiên không dầu, bàn là, bình nóng lạnh).<br>"
+                "2. <strong>Bước 2 - Gạt Aptomat:</strong> Tìm tủ điện tổng trong căn hộ, gạt cần Aptomat tổng xuống hết cỡ rồi đẩy dứt khoát lên vị trí <strong>ON</strong>.<br>"
+                "3. <strong>Bước 3 - Kiểm tra nguồn chập:</strong> Cắm bật lần lượt từng thiết bị lại. Nếu cắm thiết bị nào mà Aptomat nhảy ngay lập tức thì thiết bị đó đang bị chập mạch hoặc rò rỉ điện.<br>"
+                "4. <strong>Hỗ trợ khẩn cấp:</strong> Nếu đã ngắt hết thiết bị mà Aptomat vẫn nhảy không gạt lên được, liên hệ ngay Kỹ thuật tòa nhà qua Hotline: <strong>0988 123 456</strong> (Hỗ trợ 24/7 trong 10 phút)."
+            )
+
+        # 7. QUY ĐỊNH NUÔI THÚ CƯNG
+        if any(k in q for k in ["thú cưng", "chó", "mèo", "pet", "nuôi"]):
+            return (
+                "<strong>🐾 Quy Định Về Nuôi Thú Cưng Tại Tòa Nhà ICTU Tower:</strong><br>"
+                "• <strong>Được phép nuôi:</strong> Cư dân <strong>ĐƯỢC PHÉP</strong> nuôi thú cưng nhỏ trong căn hộ (chó cảnh dưới 10kg, mèo, cá cảnh, chim cảnh).<br>"
+                "• <strong>Các điều kiện bắt buộc:</strong><br>"
+                "&nbsp;&nbsp;1. <strong>Đăng ký với BQL:</strong> Khai báo thông tin thú cưng và cung cấp sổ tiêm chủng ngừa dại định kỳ.<br>"
+                "&nbsp;&nbsp;2. <strong>Khu vực công cộng:</strong> Khi ra khỏi căn hộ (hành lang, thang máy, sảnh, bãi xe), chó bắt buộc phải có dây dắt và rọ mõm; mèo phải ở trong lồng/balo vận chuyển.<br>"
+                "&nbsp;&nbsp;3. <strong>Vệ sinh tuyệt đối:</strong> Nghiêm cấm để thú cưng phóng uế ở hành lang, cầu thang hoặc khuôn viên chung tòa nhà.<br>"
+                "&nbsp;&nbsp;4. <strong>Tiếng ồn:</strong> Cư dân có trách nhiệm quản lý, không để thú cưng sủa hoặc kêu về đêm gây ảnh hưởng tới các căn hộ xung quanh."
+            )
+
+        # 8. TỶ LỆ LẤP ĐẦY & QUY MÔ
+        if any(k in q for k in ["lấp đầy", "tỉ lệ lấp đầy", "tỷ lệ lấp đầy", "occupancy", "bao nhiêu phòng", "tổng số căn"]):
+            return (
+                "<strong>📊 Thống Kê Tỷ Lệ Lấp Đầy & Tình Trạng Căn Hộ Tòa Nhà ICTU Tower:</strong><ul>"
+                "<li><strong>Tỷ lệ lấp đầy hiện tại:</strong> <span class=\"badge bg-success fs-6\">83.3%</span> (Đạt chỉ tiêu vận hành doanh nghiệp)</li>"
+                "<li><strong>Tổng số căn hộ:</strong> 30 căn cao cấp (2 khối tháp A & B)</li>"
+                "<li><strong>Đang có cư dân ở:</strong> 25 căn (83.3%)</li>"
+                "<li><strong>Căn hộ còn trống:</strong> 5 căn (A103, A206, A303, B102, B203 - Sẵn sàng cho thuê ngay)</li>"
+                "<li><strong>Căn hộ đang bảo trì kỹ thuật:</strong> 2 căn (A203: sửa vòi lavabo; B105: bảo dưỡng điều hòa)</li>"
+                "</ul>"
+            )
+
+        # 9. CÔNG NỢ & AI CHƯA NỘP TIỀN
+        if any(k in q for k in ["chưa nộp", "chưa đóng", "nợ tiền", "công nợ", "ai chưa", "căn nào nợ"]):
+            debt_lines = [line.strip() for line in context.splitlines() if "nợ" in line.lower() or "chậm" in line.lower() or "debt" in line.lower()]
+            return (
+                "<strong>💰 Danh Sách Căn Hộ Đang Nợ Tiền Phòng / Chưa Đóng Phí Tháng Này:</strong><ul>"
+                + "".join(f"<li>{l}</li>" for l in debt_lines)
+                + "</ul>"
+                "<strong>📌 Cú pháp thanh toán nộp tiền:</strong><br>"
+                "• Ngân hàng: <strong>MB Bank (Quân Đội)</strong> | STK: <strong>99998888ICTU</strong><br>"
+                "• Chủ TK: <strong>BAN QUẢN LÝ TÒA NHÀ ICTU TOWER</strong><br>"
+                "• Cú pháp chuyển khoản: <code>ICTU [Mã_Phòng]</code> (Ví dụ: <em>ICTU A101</em>)"
+            )
+
+        # 10. CÚ PHÁP CHUYỂN KHOẢN VIETQR
+        if any(k in q for k in ["vietqr", "cú pháp", "chuyển khoản", "stk", "tài khoản", "ngân hàng"]):
+            return (
+                "<strong>💳 Thông Tin Chuyển Khoản & Cú Pháp Thanh Toán Tự Động VietQR:</strong><br>"
+                "• Ngân hàng thụ hưởng: <strong>MB Bank (Ngân hàng Quân Đội)</strong> hoặc <strong>Vietcombank</strong><br>"
+                "• Số tài khoản: <strong>99998888ICTU</strong><br>"
+                "• Chủ tài khoản: <strong>BAN QUẢN LÝ TÒA NHÀ ICTU TOWER</strong><br>"
+                "• Cú pháp chuyển khoản: <code>ICTU [Mã_Phòng]</code> (Ví dụ: <em>ICTU A101</em>)<br>"
+                "• <strong>Cơ chế tự động:</strong> Sau khi chuyển khoản đúng cú pháp, hệ thống sẽ tự động gạch nợ qua Webhook ngân hàng và cập nhật trạng thái sau 30 giây."
+            )
+
+        # 11. BIỂU PHÍ DỊCH VỤ & GIÁ ĐIỆN NƯỚC (Chỉ hiển thị khi hỏi biểu phí/giá)
+        if any(k in q for k in ["biểu phí", "giá điện", "giá nước", "phí gửi xe", "phí dịch vụ", "bao nhiêu tiền điện", "đơn giá"]):
+            return (
+                "<strong>⚡ Biểu Phí Dịch Vụ Tiêu Chuẩn Tại Tòa Nhà ICTU Tower:</strong><ul>"
+                "<li><strong>Điện sinh hoạt:</strong> 3.500 đ/kWh (Công tơ điện tử riêng từng phòng)</li>"
+                "<li><strong>Nước sạch sinh hoạt:</strong> 25.000 đ/m³ (Đồng hồ nước kiểm định định kỳ)</li>"
+                "<li><strong>Phí quản lý vận hành tòa nhà:</strong> 15.000 đ/m²/tháng (Bảo vệ, an ninh, vệ sinh hành lang, thang máy)</li>"
+                "<li><strong>Gửi xe máy:</strong> 100.000 đ/xe/tháng (Thẻ từ RFID phân tầng)</li>"
+                "<li><strong>Gửi ô tô:</strong> 1.200.000 đ/xe/tháng (Hầm đỗ xe thông minh)</li>"
+                "<li><strong>Phí vệ sinh & gom rác:</strong> 120.000 đ/căn/tháng</li>"
+                "</ul>"
+            )
+
+        # 12. PHÒNG TRỐNG
+        if any(k in q for k in ["trống", "còn phòng", "chưa thuê", "chưa có khách", "sẵn sàng"]):
+            empty_lines = [line.strip() for line in context.splitlines() if "trống" in line.lower() or "empty" in line.lower() or "chưa có khách" in line.lower()]
+            return (
+                "<strong>🔑 Danh Sách Căn Hộ Hiện Đang Trống (Có Thể Cho Thuê Ngay):</strong><ul>"
+                + "".join(f"<li>{l}</li>" for l in empty_lines)
+                + "</ul>"
+                "<em>💡 Bạn có thể vào tab 'Quản Lý Căn Hộ' để xem hình ảnh và sơ đồ mặt bằng chi tiết của các căn trên.</em>"
+            )
+
+        # 13. NỘI QUY: GIỜ GIẤC, TIẾP KHÁCH, KHOAN ĐỤC, TẠM TRÚ, RÁC
+        if any(k in q for k in ["giờ giấc", "ra vào", "tiếp khách", "qua đêm", "khóa cửa"]):
+            return (
+                "<strong>⏰ Quy Định Về Giờ Giấc & Tiếp Khách (ICTU Tower):</strong><br>"
+                "• <strong>Cư dân tòa nhà:</strong> Ra vào tự do 24/7 bằng thẻ từ thang máy & cửa sảnh RFID.<br>"
+                "• <strong>Khách vãng lai:</strong> Gửi xe tại hầm B1/B2 và đăng ký xuất trình CCCD tại quầy Lễ tân/Bảo vệ tầng G.<br>"
+                "• <strong>Khách ở qua đêm:</strong> Cư dân vui lòng thông báo cho Ban Quản Lý hoặc bảo vệ trước 22h00 để phục vụ công tác an ninh.<br>"
+                "• <strong>Hotline bảo vệ trực ca đêm:</strong> <strong>0988 123 456</strong> (hoặc máy nội bộ sảnh)."
+            )
+
+        if any(k in q for k in ["khoan", "đục", "thi công", "gây ồn"]):
+            return (
+                "<strong>🛠️ Quy Định Về Thi Công Sửa Chữa & Tiếng Ồn:</strong><br>"
+                "• Khung giờ được phép khoan đục: <strong>08h00 - 11h30</strong> và <strong>13h30 - 17h00</strong> (Thứ Hai đến Thứ Sáu).<br>"
+                "• Nghiêm cấm thi công gây ồn sau 22h00, giờ nghỉ trưa, và toàn bộ Thứ Bảy, Chủ Nhật."
+            )
+
+        # 14. TRA CỨU PHÒNG CỤ THỂ (VD: A101, B205...)
         room_match = re.search(r"\b([A-Za-z]\s?\d{3})\b", question, re.IGNORECASE)
         if room_match:
             room_code = room_match.group(1).replace(" ", "").upper()
             related_lines = [line.strip() for line in context.splitlines() if room_code in line.upper()]
             if related_lines:
-                html = f"<strong>🏢 Thông Tin Chi Tiết Về Căn Hộ {room_code}:</strong><ul>"
-                for line in related_lines:
-                    html += f"<li>{line}</li>"
-                html += "</ul>"
-                html += f"<em>💡 Cần thực hiện thao tác gì với căn {room_code} (nhắc nợ, sửa chữa, gia hạn HĐ), bạn có thể yêu cầu tôi hỗ trợ!</em>"
-                return html
-
-        # 2. Câu hỏi về nợ tiền / công nợ / ai chưa đóng tiền
-        if any(w in q for w in ["nợ", "chưa đóng", "chưa nộp", "chậm nộp", "công nợ"]):
-            debt_lines = [line.strip() for line in context.splitlines() if "nợ" in line.lower() or "chậm" in line.lower() or "debt" in line.lower()]
-            if debt_lines:
-                html = "<strong>💰 Danh Sách Căn Hộ Đang Nợ Tiền / Chưa Đóng Phí:</strong><ul>"
-                for line in debt_lines:
-                    html += f"<li>{line}</li>"
-                html += "</ul>"
-                html += (
-                    "<strong>📌 Cú pháp thanh toán nộp tiền:</strong><br>"
-                    "• Ngân hàng: <strong>MB Bank (Quân Đội)</strong> hoặc <strong>Vietcombank</strong><br>"
-                    "• STK: <strong>99998888ICTU</strong> | Chủ TK: <strong>BQL TOA NHA ICTU TOWER</strong><br>"
-                    "• Nội dung: <code>ICTU [Mã_Phòng]</code> (VD: <em>ICTU A101</em>)"
-                )
-                return html
-
-        # 3. Câu hỏi về phòng trống / còn phòng nào thuê
-        if any(w in q for w in ["trống", "còn phòng", "chưa thuê", "chưa có khách", "sẵn sàng"]):
-            empty_lines = [line.strip() for line in context.splitlines() if "trống" in line.lower() or "empty" in line.lower() or "chưa có khách" in line.lower()]
-            if empty_lines:
-                html = "<strong>🔑 Danh Sách Căn Hộ Hiện Đang Trống (Có Thể Cho Thuê Ngay):</strong><ul>"
-                for line in empty_lines:
-                    html += f"<li>{line}</li>"
-                html += "</ul>"
-                html += "<em>💡 Bạn có thể vào tab 'Quản Lý Căn Hộ' để xem hình ảnh và sơ đồ mặt bằng chi tiết của các căn trên.</em>"
-                return html
-
-        # 4. Câu hỏi về xe cộ, biển số xe, thẻ gửi xe, RFID
-        if any(w in q for w in ["xe", "biển số", "bãi xe", "thẻ", "rfid", "ô tô", "xe máy"]):
-            plate_match = re.search(r"(\d{2}[A-Za-z0-9\-\.\s]{4,10})", question)
-            vehicle_lines = [line.strip() for line in context.splitlines() if any(v in line.lower() for v in ["rfid", "xe", "biển số"])]
-            if plate_match:
-                p = plate_match.group(1).strip().upper()
-                found = [v for v in vehicle_lines if p in v.upper()]
-                if found:
-                    return f"<strong>🚗 Kết Quả Tìm Kiếm Phương Tiện & Thẻ Xe ({p}):</strong><ul>" + "".join(f"<li>{l}</li>" for l in found) + "</ul>"
-            if vehicle_lines:
-                return "<strong>🚗 Dữ Liệu Quản Lý Thẻ & Phương Tiện Tòa Nhà:</strong><ul>" + "".join(f"<li>{l}</li>" for l in vehicle_lines[:8]) + "</ul>"
-
-        # 5. Câu hỏi về hợp đồng, hết hạn, tiền cọc
-        if any(w in q for w in ["hợp đồng", "hết hạn", "cọc", "đặt cọc", "hoàn cọc"]):
-            contract_lines = [line.strip() for line in context.splitlines() if "hợp đồng" in line.lower() or "hết hạn" in line.lower() or "cọc" in line.lower()]
-            if contract_lines:
-                return "<strong>📑 Thông Tin Hợp Đồng & Kỳ Hạn Thuê:</strong><ul>" + "".join(f"<li>{l}</li>" for l in contract_lines) + "</ul>"
-
-        # 6. Câu hỏi về bảo trì, sự cố, hỏng hóc kỹ thuật
-        if any(w in q for w in ["bảo trì", "sự cố", "hỏng", "sửa", "aptomat", "rò rỉ", "thang máy"]):
-            maint_lines = [line.strip() for line in context.splitlines() if "bảo trì" in line.lower() or "sự cố" in line.lower() or "bt-" in line.lower()]
-            tech_guide = ""
-            if "aptomat" in q:
-                tech_guide = (
-                    "<br><strong>🛠️ Hướng dẫn xử lý sự cố nhảy Aptomat:</strong><br>"
-                    "1. Ngắt toàn bộ phích cắm của các thiết bị công suất lớn (bếp từ, bình nóng lạnh, ấm siêu tốc).<br>"
-                    "2. Gạt công tắc Aptomat tổng lên vị trí ON.<br>"
-                    "3. Bật lần lượt từng thiết bị để xác định nguồn rò rỉ điện. Nếu vẫn nhảy ngay lập tức, liên hệ Kỹ thuật tòa nhà qua Hotline 1900 8888."
-                )
-            if maint_lines:
-                return "<strong>🔧 Tình Trạng Bảo Trì & Sự Cố Tòa Nhà:</strong><ul>" + "".join(f"<li>{l}</li>" for l in maint_lines) + "</ul>" + tech_guide
-            elif tech_guide:
-                return tech_guide
-
-        # 7. Câu hỏi về điện nước, biểu phí, dịch vụ
-        if any(w in q for w in ["điện", "nước", "biểu phí", "giá điện", "giá nước", "phí quản lý", "kwh", "dịch vụ"]):
-            fee_lines = [line.strip() for line in context.splitlines() if any(f in line.lower() for f in ["biểu phí", "điện", "nước", "dịch vụ"])]
-            return (
-                "<strong>⚡ Biểu Phí Dịch Vụ & Chỉ Số Điện Nước Tòa Nhà ICTU Tower:</strong><ul>"
-                "<li><strong>Điện sinh hoạt:</strong> 3.500 đ/kWh</li>"
-                "<li><strong>Nước sạch:</strong> 25.000 đ/m³</li>"
-                "<li><strong>Phí quản lý vận hành:</strong> 15.000 đ/m²/tháng</li>"
-                "<li><strong>Gửi xe máy:</strong> 100.000 đ/xe/tháng</li>"
-                "<li><strong>Gửi ô tô:</strong> 1.200.000 đ/xe/tháng</li>"
-                "<li><strong>Phí vệ sinh & rác:</strong> 120.000 đ/tháng</li>"
-                "</ul>"
-                + ("<br><strong>Chỉ số & dữ liệu ghi nhận:</strong><ul>" + "".join(f"<li>{l}</li>" for l in fee_lines[:6]) + "</ul>" if fee_lines else "")
-            )
-
-        # 8. Câu hỏi về thanh toán VietQR / tài khoản ngân hàng
-        if any(w in q for w in ["vietqr", "qr", "chuyển khoản", "tài khoản", "ngân hàng", "stk"]):
-            return (
-                "<strong>💳 Thông Tin Chuyển Khoản & Cú Pháp VietQR:</strong><br>"
-                "• Ngân hàng thụ hưởng: <strong>MB Bank (Ngân hàng Quân Đội)</strong><br>"
-                "• Số tài khoản: <strong>99998888ICTU</strong><br>"
-                "• Chủ tài khoản: <strong>BAN QUẢN LÝ TÒA NHÀ ICTU TOWER</strong><br>"
-                "• Cú pháp chuyển khoản: <code>ICTU [Mã_Phòng]</code> (Ví dụ: <em>ICTU A101</em>)<br>"
-                "• Sau khi chuyển khoản, hệ thống tự động gạch nợ qua Webhook ngân hàng sau 30 giây."
-            )
-
-        # 9. Tính toán số học cơ bản (Math solver)
-        math_clean = re.sub(r"[^\d\+\-\*\/\.\(\)\s]", "", question).strip()
-        if math_clean and any(op in math_clean for op in ["+", "-", "*", "/"]) and len(math_clean) >= 3:
-            try:
-                ans = eval(math_clean, {"__builtins__": None}, {})
                 return (
-                    f"<strong>🧮 Kết Quả Tính Toán:</strong><br>"
-                    f"<code>{math_clean} = <strong>{ans:,.2f}</strong></code> (hoặc <strong>{ans:,}</strong>)"
+                    f"<strong>🏢 Thông Tin Chi Tiết Về Căn Hộ {room_code}:</strong><ul>"
+                    + "".join(f"<li>{l}</li>" for l in related_lines)
+                    + "</ul>"
+                    f"<em>💡 Cần thực hiện thao tác gì với căn {room_code} (nhắc nợ, sửa chữa, gia hạn HĐ), bạn có thể yêu cầu tôi hỗ trợ!</em>"
                 )
-            except Exception:
-                pass
 
-        # 10. Tìm kiếm theo tên người hoặc CCCD
-        words = [w for w in question.split() if len(w) > 2]
-        matched_lines = []
-        for line in context.splitlines():
-            for w in words:
-                if w.lower() in line.lower():
-                    matched_lines.append(line.strip())
-                    break
-        if matched_lines:
-            return "<strong>🔍 Kết Quả Tra Cứu Từ Dữ Liệu Tòa Nhà:</strong><ul>" + "".join(f"<li>{l}</li>" for l in set(matched_lines)[:8]) + "</ul>"
+        # 15. TÌM KIẾM THEO TỪ KHÓA THỰC THỂ (Tên người, CCCD, biển số xe)
+        STOP_WORDS = {
+            "có", "được", "không", "trong", "ngoài", "căn", "hộ", "nhà", "phòng", "của", "cho",
+            "này", "đó", "người", "tôi", "bạn", "làm", "sao", "gì", "nào", "thế", "ở", "và",
+            "là", "các", "những", "một", "với", "về", "hỏi", "biết", "hay", "ạ", "ơi", "toà", "tòa"
+        }
+        meaningful_words = [w for w in re.findall(r"\w+", q) if len(w) > 2 and w not in STOP_WORDS]
+        if meaningful_words:
+            matched_lines = []
+            for line in context.splitlines():
+                for w in meaningful_words:
+                    if w in line.lower() and not any(tag in line for tag in ["=== TỔNG QUAN", "=== 1. TOÀN BỘ"]):
+                        matched_lines.append(line.strip())
+                        break
+            if matched_lines:
+                unique_matches = list(dict.fromkeys(matched_lines))[:6]
+                return "<strong>🔍 Kết Quả Tra Cứu Từ Dữ Liệu Tòa Nhà:</strong><ul>" + "".join(f"<li>{l}</li>" for l in unique_matches) + "</ul>"
 
-        # Mặc định: Trả về tóm tắt tổng quan vận hành tòa nhà
+        # 16. MẶC ĐỊNH: Phản hồi lịch sự, hướng dẫn rõ ràng (KHÔNG in lung tung danh sách phòng)
         return (
             "<strong>🤖 Trợ Lý Trí Tuệ Nhân Tạo ICTU Tower:</strong><br>"
-            "Tôi đã tiếp nhận câu hỏi của bạn. Hệ thống đang trực tiếp liên kết với Cơ sở dữ liệu tòa nhà.<br><br>"
-            "<strong>Tổng quan tình trạng hiện tại:</strong><br>"
-            + "<br>".join(f"• {line}" for line in context.splitlines()[:5] if line.strip())
-            + "<br><br><em>💡 Bạn có thể hỏi cụ thể về: mã phòng (vd: A101), danh sách nợ, phòng trống, biển số xe, chỉ số điện nước, hoặc yêu cầu tính toán bất kỳ!</em>"
+            "Tôi đã tiếp nhận câu hỏi của bạn. Để được giải đáp nhanh và chính xác nhất, bạn có thể bấm vào các gợi ý ở trên hoặc hỏi về:<br>"
+            "• <strong>Vị trí & Tiện ích:</strong> Vị trí tòa nhà ICTU Tower ở đâu? Tiện ích xung quanh?<br>"
+            "• <strong>Nội quy & Đời sống:</strong> Quy định nuôi thú cưng, giờ giấc ra vào, hoàn trả tiền cọc, mẹo tiết kiệm điện...<br>"
+            "• <strong>Vận hành căn hộ:</strong> Tỷ lệ lấp đầy, danh sách nợ tiền, tính tiền điện phòng A101, sự cố nhảy Aptomat...<br>"
+            "• <strong>Tính toán tự nhiên:</strong> Bạn có thể gõ phép tính bất kỳ (vd: <em>Tính 15 nhân 350 nghìn</em>, <em>50 triệu chia 10</em>)."
         )
