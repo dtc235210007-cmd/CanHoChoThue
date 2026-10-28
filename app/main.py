@@ -12,6 +12,12 @@ from pydantic import BaseModel, Field
 
 from app.ai_service import ROLE_PROFILES, AIService
 
+try:
+    from app.rag_service import rag_service
+except Exception as e:
+    print(f"[Main RAG Warning] Không thể import rag_service: {e}")
+    rag_service = None
+
 # Database & Models
 try:
     from app.database import engine, SessionLocal
@@ -382,6 +388,35 @@ async def api_chat(req: QuestionRequest) -> AIResponse:
 @app.post("/api/v1/ai/ask-regulation", response_model=AIResponse)
 async def api_ask_regulation(req: QuestionRequest) -> AIResponse:
     return await api_chat(req)
+
+
+# ==========================================
+# VECTOR & RAG ENDPOINTS
+# ==========================================
+class RAGSearchRequest(BaseModel):
+    query: str = Field(..., description="Câu hỏi hoặc từ khóa cần tìm kiếm vector")
+    top_k: int = Field(default=3, description="Số lượng đoạn tri thức tương đồng nhất")
+
+
+@app.get("/api/v1/ai/rag/status")
+def api_rag_status():
+    """Kiểm tra trạng thái hệ thống Vector Database & RAG."""
+    if not rag_service:
+        return {"ready": False, "reason": "Module Vector RAG chưa sẵn sàng"}
+    return rag_service.get_status()
+
+
+@app.post("/api/v1/ai/rag/search")
+def api_rag_search(req: RAGSearchRequest):
+    """Tìm kiếm vector tương đồng (Cosine Similarity Search) trong tài liệu quy chế."""
+    if not rag_service:
+        raise HTTPException(status_code=503, detail="Vector RAG chưa sẵn sàng")
+    results = rag_service.search(req.query, top_k=req.top_k)
+    return {
+        "query": req.query,
+        "total_results": len(results),
+        "results": results,
+    }
 
 
 # ==========================================

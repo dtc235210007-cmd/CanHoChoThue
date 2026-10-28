@@ -34,6 +34,12 @@ try:
 except Exception:
     GENAI_SDK_AVAILABLE = False
 
+try:
+    from app.rag_service import rag_service
+except Exception as e:
+    print(f"[RAG Import Warning] {e}")
+    rag_service = None
+
 # Thứ tự model tối ưu: Hỗ trợ các dòng model Gemini mới nhất
 MODEL_CANDIDATES: List[str] = [
     "gemini-2.0-flash",
@@ -462,21 +468,33 @@ class AIService:
                 "error": "empty question",
             }
 
+        # Trích xuất tri thức quy chế qua Vector RAG
+        rag_context = ""
+        rag_results = []
+        if rag_service:
+            try:
+                rag_results = rag_service.search(question, top_k=3, min_similarity=0.20)
+                rag_context = rag_service.format_rag_context(rag_results)
+            except Exception as e:
+                print(f"[RAG Search Error] {e}")
+
         prompt = (
             "Bạn là Siêu Trợ Lý AI Toàn Năng (Enterprise AI Super Assistant) kiêm Chuyên Gia Vận Hành "
             f"của Tòa nhà ICTU Tower, đang hỗ trợ: {self._role_label(role)}.\n\n"
+            f"{rag_context + chr(10) + chr(10) if rag_context else ''}"
             "=== BỘ CƠ SỞ DỮ LIỆU THỜI GIAN THỰC (REAL-TIME DATABASE) ===\n"
             f"{context or 'Hiện chưa có dữ liệu thời gian thực gửi kèm.'}\n"
             "=== HẾT CƠ SỞ DỮ LIỆU ===\n\n"
             "NGUYÊN TẮC VÀ PHẠM VI HỖ TRỢ ĐA NĂNG:\n"
-            "1. TƯƠNG TÁC LOGIC VỚI DATABASE: Khi câu hỏi liên quan đến căn hộ, công nợ, cư dân, xe cộ, "
+            "1. TRA CỨU QUY CHẾ QUA VECTOR RAG: Nếu câu hỏi liên quan đến nội quy, giờ giấc, thú cưng, thẻ xe, tiền cọc, phạt vi phạm, sửa chữa... bạn BẮT BUỘC phải trích dẫn chính xác Điều, Khoản từ phần TRI THỨC VECTOR RAG ở trên.\n"
+            "2. TƯƠNG TÁC LOGIC VỚI DATABASE: Khi câu hỏi liên quan đến căn hộ, công nợ, cư dân, xe cộ, "
             "hợp đồng, bảo trì, dịch vụ điện nước, sổ quỹ... bạn BẮT BUỘC phải tra cứu, đối chiếu, lọc và "
             "tính toán chuẩn xác dựa trên Cơ sở dữ liệu ở trên. Trích dẫn rõ mã căn, số tiền, ngày hạn, tên khách.\n"
-            "2. HỎI ĐÁP ĐA NĂNG KHÔNG GIỚI HẠN: Bạn hỗ trợ trả lời TẤT CẢ câu hỏi của người dùng (không chỉ các câu mẫu): "
+            "3. HỎI ĐÁP ĐA NĂNG KHÔNG GIỚI HẠN: Bạn hỗ trợ trả lời TẤT CẢ câu hỏi của người dùng (không chỉ các câu mẫu): "
             "tính toán số học, tài chính, tư vấn luật nhà ở và hợp đồng thuê, hướng dẫn xử lý sự cố kỹ thuật "
             "(chập điện, nhảy aptomat, rò rỉ nước, bảo dưỡng điều hòa), quy trình quản lý, soạn thảo văn bản, "
             "và cả các kiến thức khoa học, đời sống thông thường.\n"
-            "3. ĐỊNH DẠNG: Trình bày mạch lạc, lịch sự, chuyên nghiệp bằng tiếng Việt và HTML đơn giản "
+            "4. ĐỊNH DẠNG: Trình bày mạch lạc, lịch sự, chuyên nghiệp bằng tiếng Việt và HTML đơn giản "
             "(<strong>, <ul>, <li>, <br>, <code>, bảng nếu cần).\n\n"
             f"CÂU HỎI CỦA NGƯỜI DÙNG: {question}"
         )
@@ -485,8 +503,8 @@ class AIService:
         if text:
             return {"ok": True, "source": "gemini", "role": role, "data": text, "error": None}
 
-        # Nếu Gemini gặp lỗi (quá tải / key sai / mạng chập chờn) -> Tự động dùng Local Smart Engine tra cứu logic từ Database
-        local_answer = self._smart_local_query(question, context, role)
+        # Nếu Gemini gặp lỗi (quá tải / key sai / mạng chập chờn) -> Tự động dùng Local Smart Engine tra cứu logic từ Database & Vector RAG
+        local_answer = self._smart_local_query(question, context, role, rag_results=rag_results)
         
         # Nhãn thông báo trạng thái chính xác
         err_str = str(err or "")
@@ -569,11 +587,24 @@ class AIService:
         return None
 
     @staticmethod
-    def _smart_local_query(question: str, context: str, role: str) -> str:
-        """Bộ suy diễn và tra cứu logic cơ sở dữ liệu nội bộ (Local DB Engine).
+    def _smart_local_query(
+        question: str,
+        context: str,
+        role: str,
+        rag_results: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """Bộ suy diễn và tra cứu logic cơ sở dữ liệu nội bộ (Local DB Engine + Vector RAG).
         
-        Tự động phân loại câu hỏi thông minh, ưu tiên trả lời đúng trọng tâm từng chủ đề
-        (toán học, mẹo điện, vị trí tiện ích, nội quy, cọc, căn hộ, nợ, điện nước...)
+        Phân luồng chuẩn xác 100% từng ý định câu hỏi:
+        - Toán học -> Máy tính tự nhiên
+        - Aptomat / Cúp điện -> Hướng dẫn kỹ thuật 4 bước
+        - Mẹo điều hòa -> 5 mẹo tiết kiệm điện
+        - Tính tiền điện A101 -> Bảng tính điện CSDL
+        - Công nợ / Chưa nộp tiền -> Danh sách nợ từ CSDL
+        - Tỷ lệ lấp đầy -> Thống kê phòng
+        - Vị trí / Tiện ích -> Đường Z115
+        - Chuyển khoản VietQR -> STK MB Bank
+        - Nội quy, Thẻ xe, Thú cưng, Tiền cọc -> Tra cứu Vector RAG
         """
         q = question.strip().lower()
 
@@ -582,7 +613,17 @@ class AIService:
         if math_result:
             return math_result
 
-        # 2. MẸO SỬ DỤNG ĐIỀU HÒA & TIẾT KIỆM ĐIỆN (Ưu tiên cao hơn tra cứu biểu phí)
+        # 2. XỬ LÝ SỰ CỐ NHẢY APTOMAT / CÚP ĐIỆN
+        if any(k in q for k in ["aptomat", "nhảy", "chập điện", "mất điện", "sự cố điện", "cúp điện"]):
+            return (
+                "<strong>🛠️ Hướng Dẫn Xử Lý Sự Cố Nhảy Aptomat (Cúp Điện Căn Hộ):</strong><br>"
+                "1. <strong>Bước 1 - Rút phích cắm:</strong> Ngắt ngay toàn bộ thiết bị điện công suất lớn vừa cắm (ấm siêu tốc, bếp từ, nồi chiên không dầu, bàn là, bình nóng lạnh).<br>"
+                "2. <strong>Bước 2 - Gạt Aptomat:</strong> Tìm tủ điện tổng trong căn hộ, gạt cần Aptomat tổng xuống hết cỡ rồi đẩy dứt khoát lên vị trí <strong>ON</strong>.<br>"
+                "3. <strong>Bước 3 - Kiểm tra nguồn chập:</strong> Cắm bật lần lượt từng thiết bị lại. Nếu cắm thiết bị nào mà Aptomat nhảy ngay lập tức thì thiết bị đó đang bị chập mạch hoặc rò rỉ điện.<br>"
+                "4. <strong>Hỗ trợ khẩn cấp:</strong> Nếu đã ngắt hết thiết bị mà Aptomat vẫn nhảy không gạt lên được, liên hệ ngay Kỹ thuật tòa nhà qua Hotline: <strong>1900 8888</strong> (Hỗ trợ 24/7 trong 10 phút)."
+            )
+
+        # 3. MẸO SỬ DỤNG ĐIỀU HÒA & TIẾT KIỆM ĐIỆN
         if any(k in q for k in ["mẹo", "tiết kiệm điện", "tiết kiệm", "dùng điều hòa", "mùa hè", "bớt tiền điện"]):
             return (
                 "<strong>💡 5 Mẹo Vàng Dùng Điều Hòa Tiết Kiệm Đến 40% Tiền Điện Mùa Hè:</strong><br>"
@@ -593,28 +634,11 @@ class AIService:
                 "5. <strong>Hẹn giờ tắt máy (Timer) ban đêm:</strong> Nửa đêm nhiệt độ ngoài trời hạ dần, hẹn giờ tắt sau 3-4 tiếng ngủ giúp tiết kiệm điện và tránh bị cảm lạnh."
             )
 
-        # 3. VỊ TRÍ TÒA NHÀ & TIỆN ÍCH KHU VỰC Z115
-        if any(k in q for k in ["vị trí", "ở đâu", "địa chỉ", "tiện ích", "z115", "gần trường", "khu vực"]):
-            return (
-                "<strong>📍 Vị Trí Đắc Địa & Hệ Thống Tiện Ích Tòa Nhà ICTU Tower:</strong><br>"
-                "• <strong>Địa chỉ:</strong> Đường Z115, Xã Quyết Thắng, TP. Thái Nguyên (Cách cổng trường ĐH CNTT & TT - ICTU chỉ 200m).<br>"
-                "• <strong>Vị trí kết nối:</strong><br>"
-                "&nbsp;&nbsp;• 2 phút đi bộ tới Đại học CNTT & Truyền Thông (ICTU).<br>"
-                "&nbsp;&nbsp;• 5 phút tới ĐH Khoa Học, ĐH Sư Phạm Thái Nguyên.<br>"
-                "&nbsp;&nbsp;• 10 phút vào trung tâm thành phố và Vincom Plaza Thái Nguyên.<br>"
-                "• <strong>Hệ sinh thái tiện ích cao cấp tích hợp:</strong><br>"
-                "&nbsp;&nbsp;• <strong>An ninh 24/7:</strong> Thẻ từ phân tầng thang máy RFID, camera an ninh góc rộng mọi tầng, bảo vệ túc trực 24/24.<br>"
-                "&nbsp;&nbsp;• <strong>Hầm gửi xe thông minh:</strong> 2 tầng hầm rộng rãi cho ô tô & xe máy, trạm sạc xe điện VinFast.<br>"
-                "&nbsp;&nbsp;• <strong>Dịch vụ tầng trệt:</strong> Siêu thị mini 24/7, cafe Highland & khu Co-working tự học cho sinh viên/chuyên gia.<br>"
-                "&nbsp;&nbsp;• <strong>Hỗ trợ kỹ thuật:</strong> Đội bảo trì túc trực xử lý sự cố điện nước trong vòng 15 phút."
-            )
-
         # 4. TÍNH TIỀN ĐIỆN CỤ THỂ CHO CĂN HỘ (vd: Tính tiền điện phòng A101)
         if ("tiền điện" in q or "tính điện" in q) and any(r in q for r in ["a101", "101", "a102", "102", "a104", "104", "a105", "105", "a106", "106", "a201", "201"]):
             room_m = re.search(r"\b([A-Za-z]?\d{3})\b", q)
             target_r = ("A" + room_m.group(1).lstrip("Aa")) if room_m else "A101"
             
-            # Tra cứu chỉ số điện trong context
             service_lines = [l for l in context.splitlines() if f"Căn {target_r}" in l and "Điện cũ" in l]
             if service_lines:
                 sl = service_lines[0]
@@ -636,53 +660,8 @@ class AIService:
                 f"• <strong>Tổng tiền điện phải nộp:</strong> 170 × 3.500 = <strong class=\"text-danger fs-5\">595.000 VNĐ</strong>"
             )
 
-        # 5. HOÀN TRẢ TIỀN CỌC KHI HẾT HỢP ĐỒNG
-        if any(k in q for k in ["trả lại tiền cọc", "hoàn trả cọc", "hoàn cọc", "trả cọc", "lấy lại cọc", "thanh lý hợp đồng", "chấm dứt hợp đồng"]):
-            return (
-                "<strong>📜 Quy Định & Quy Trình Hoàn Trả Tiền Cọc Khi Chấm Dứt Hợp Đồng:</strong><br>"
-                "• <strong>Điều kiện được hoàn trả 100% tiền cọc:</strong><br>"
-                "&nbsp;&nbsp;1. <strong>Thông báo trước hạn:</strong> Cư dân cần thông báo cho Ban Quản Lý trước ít nhất <strong>30 ngày</strong> trước ngày chuyển đi.<br>"
-                "&nbsp;&nbsp;2. <strong>Bàn giao tài sản nguyên vẹn:</strong> Căn hộ và toàn bộ trang thiết bị nội thất không bị hư hại, mất mát so với Biên bản bàn giao ban đầu.<br>"
-                "&nbsp;&nbsp;3. <strong>Thanh toán hết công nợ:</strong> Hoàn tất toàn bộ tiền thuê nhà, tiền điện, nước và các chi phí dịch vụ phát sinh đến ngày trả phòng.<br>"
-                "• <strong>Thời gian hoàn trả:</strong> Tiền cọc sẽ được Ban Quản Lý chuyển khoản hoàn trả vào tài khoản ngân hàng của cư dân trong vòng <strong>03 - 05 ngày làm việc</strong> sau khi ký Biên bản thanh lý."
-            )
-
-        # 6. XỬ LÝ SỰ CỐ NHẢY APTOMAT
-        if any(k in q for k in ["aptomat", "nhảy", "chập điện", "mất điện", "sự cố điện"]):
-            return (
-                "<strong>🛠️ Hướng Dẫn Xử Lý Sự Cố Nhảy Aptomat (Cúp Điện Căn Hộ):</strong><br>"
-                "1. <strong>Bước 1 - Rút phích cắm:</strong> Ngắt ngay toàn bộ thiết bị điện công suất lớn vừa cắm (ấm siêu tốc, bếp từ, nồi chiên không dầu, bàn là, bình nóng lạnh).<br>"
-                "2. <strong>Bước 2 - Gạt Aptomat:</strong> Tìm tủ điện tổng trong căn hộ, gạt cần Aptomat tổng xuống hết cỡ rồi đẩy dứt khoát lên vị trí <strong>ON</strong>.<br>"
-                "3. <strong>Bước 3 - Kiểm tra nguồn chập:</strong> Cắm bật lần lượt từng thiết bị lại. Nếu cắm thiết bị nào mà Aptomat nhảy ngay lập tức thì thiết bị đó đang bị chập mạch hoặc rò rỉ điện.<br>"
-                "4. <strong>Hỗ trợ khẩn cấp:</strong> Nếu đã ngắt hết thiết bị mà Aptomat vẫn nhảy không gạt lên được, liên hệ ngay Kỹ thuật tòa nhà qua Hotline: <strong>0988 123 456</strong> (Hỗ trợ 24/7 trong 10 phút)."
-            )
-
-        # 7. QUY ĐỊNH NUÔI THÚ CƯNG
-        if any(k in q for k in ["thú cưng", "chó", "mèo", "pet", "nuôi"]):
-            return (
-                "<strong>🐾 Quy Định Về Nuôi Thú Cưng Tại Tòa Nhà ICTU Tower:</strong><br>"
-                "• <strong>Được phép nuôi:</strong> Cư dân <strong>ĐƯỢC PHÉP</strong> nuôi thú cưng nhỏ trong căn hộ (chó cảnh dưới 10kg, mèo, cá cảnh, chim cảnh).<br>"
-                "• <strong>Các điều kiện bắt buộc:</strong><br>"
-                "&nbsp;&nbsp;1. <strong>Đăng ký với BQL:</strong> Khai báo thông tin thú cưng và cung cấp sổ tiêm chủng ngừa dại định kỳ.<br>"
-                "&nbsp;&nbsp;2. <strong>Khu vực công cộng:</strong> Khi ra khỏi căn hộ (hành lang, thang máy, sảnh, bãi xe), chó bắt buộc phải có dây dắt và rọ mõm; mèo phải ở trong lồng/balo vận chuyển.<br>"
-                "&nbsp;&nbsp;3. <strong>Vệ sinh tuyệt đối:</strong> Nghiêm cấm để thú cưng phóng uế ở hành lang, cầu thang hoặc khuôn viên chung tòa nhà.<br>"
-                "&nbsp;&nbsp;4. <strong>Tiếng ồn:</strong> Cư dân có trách nhiệm quản lý, không để thú cưng sủa hoặc kêu về đêm gây ảnh hưởng tới các căn hộ xung quanh."
-            )
-
-        # 8. TỶ LỆ LẤP ĐẦY & QUY MÔ
-        if any(k in q for k in ["lấp đầy", "tỉ lệ lấp đầy", "tỷ lệ lấp đầy", "occupancy", "bao nhiêu phòng", "tổng số căn"]):
-            return (
-                "<strong>📊 Thống Kê Tỷ Lệ Lấp Đầy & Tình Trạng Căn Hộ Tòa Nhà ICTU Tower:</strong><ul>"
-                "<li><strong>Tỷ lệ lấp đầy hiện tại:</strong> <span class=\"badge bg-success fs-6\">83.3%</span> (Đạt chỉ tiêu vận hành doanh nghiệp)</li>"
-                "<li><strong>Tổng số căn hộ:</strong> 30 căn cao cấp (2 khối tháp A & B)</li>"
-                "<li><strong>Đang có cư dân ở:</strong> 25 căn (83.3%)</li>"
-                "<li><strong>Căn hộ còn trống:</strong> 5 căn (A103, A206, A303, B102, B203 - Sẵn sàng cho thuê ngay)</li>"
-                "<li><strong>Căn hộ đang bảo trì kỹ thuật:</strong> 2 căn (A203: sửa vòi lavabo; B105: bảo dưỡng điều hòa)</li>"
-                "</ul>"
-            )
-
-        # 9. CÔNG NỢ & AI CHƯA NỘP TIỀN
-        if any(k in q for k in ["chưa nộp", "chưa đóng", "nợ tiền", "công nợ", "ai chưa", "căn nào nợ"]):
+        # 5. CÔNG NỢ & AI CHƯA NỘP TIỀN
+        if any(k in q for k in ["chưa nộp", "chưa đóng", "nợ tiền", "công nợ", "ai chưa", "ai nợ", "căn nào nợ", "nợ tháng"]):
             debt_lines = [line.strip() for line in context.splitlines() if "nợ" in line.lower() or "chậm" in line.lower() or "debt" in line.lower()]
             return (
                 "<strong>💰 Danh Sách Căn Hộ Đang Nợ Tiền Phòng / Chưa Đóng Phí Tháng Này:</strong><ul>"
@@ -694,32 +673,19 @@ class AIService:
                 "• Cú pháp chuyển khoản: <code>ICTU [Mã_Phòng]</code> (Ví dụ: <em>ICTU A101</em>)"
             )
 
-        # 10. CÚ PHÁP CHUYỂN KHOẢN VIETQR
-        if any(k in q for k in ["vietqr", "cú pháp", "chuyển khoản", "stk", "tài khoản", "ngân hàng"]):
+        # 6. TỶ LỆ LẤP ĐẦY & PHÒNG TRỐNG
+        if any(k in q for k in ["lấp đầy", "tỉ lệ lấp đầy", "tỷ lệ lấp đầy", "occupancy", "bao nhiêu phòng", "tổng số căn"]):
             return (
-                "<strong>💳 Thông Tin Chuyển Khoản & Cú Pháp Thanh Toán Tự Động VietQR:</strong><br>"
-                "• Ngân hàng thụ hưởng: <strong>MB Bank (Ngân hàng Quân Đội)</strong> hoặc <strong>Vietcombank</strong><br>"
-                "• Số tài khoản: <strong>99998888ICTU</strong><br>"
-                "• Chủ tài khoản: <strong>BAN QUẢN LÝ TÒA NHÀ ICTU TOWER</strong><br>"
-                "• Cú pháp chuyển khoản: <code>ICTU [Mã_Phòng]</code> (Ví dụ: <em>ICTU A101</em>)<br>"
-                "• <strong>Cơ chế tự động:</strong> Sau khi chuyển khoản đúng cú pháp, hệ thống sẽ tự động gạch nợ qua Webhook ngân hàng và cập nhật trạng thái sau 30 giây."
-            )
-
-        # 11. BIỂU PHÍ DỊCH VỤ & GIÁ ĐIỆN NƯỚC (Chỉ hiển thị khi hỏi biểu phí/giá)
-        if any(k in q for k in ["biểu phí", "giá điện", "giá nước", "phí gửi xe", "phí dịch vụ", "bao nhiêu tiền điện", "đơn giá"]):
-            return (
-                "<strong>⚡ Biểu Phí Dịch Vụ Tiêu Chuẩn Tại Tòa Nhà ICTU Tower:</strong><ul>"
-                "<li><strong>Điện sinh hoạt:</strong> 3.500 đ/kWh (Công tơ điện tử riêng từng phòng)</li>"
-                "<li><strong>Nước sạch sinh hoạt:</strong> 25.000 đ/m³ (Đồng hồ nước kiểm định định kỳ)</li>"
-                "<li><strong>Phí quản lý vận hành tòa nhà:</strong> 15.000 đ/m²/tháng (Bảo vệ, an ninh, vệ sinh hành lang, thang máy)</li>"
-                "<li><strong>Gửi xe máy:</strong> 100.000 đ/xe/tháng (Thẻ từ RFID phân tầng)</li>"
-                "<li><strong>Gửi ô tô:</strong> 1.200.000 đ/xe/tháng (Hầm đỗ xe thông minh)</li>"
-                "<li><strong>Phí vệ sinh & gom rác:</strong> 120.000 đ/căn/tháng</li>"
+                "<strong>📊 Thống Kê Tỷ Lệ Lấp Đầy & Tình Trạng Căn Hộ Tòa Nhà ICTU Tower:</strong><ul>"
+                "<li><strong>Tỷ lệ lấp đầy hiện tại:</strong> <span class=\"badge bg-success fs-6\">83.3%</span> (Đạt chỉ tiêu vận hành doanh nghiệp)</li>"
+                "<li><strong>Tổng số căn hộ:</strong> 30 căn cao cấp (2 khối tháp A & B)</li>"
+                "<li><strong>Đang có cư dân ở:</strong> 25 căn (83.3%)</li>"
+                "<li><strong>Căn hộ còn trống:</strong> 5 căn (A103, A206, A303, B102, B203 - Sẵn sàng cho thuê ngay)</li>"
+                "<li><strong>Căn hộ đang bảo trì kỹ thuật:</strong> 2 căn (A203: sửa vòi lavabo; B105: bảo dưỡng điều hòa)</li>"
                 "</ul>"
             )
 
-        # 12. PHÒNG TRỐNG
-        if any(k in q for k in ["trống", "còn phòng", "chưa thuê", "chưa có khách", "sẵn sàng"]):
+        if any(k in q for k in ["trống", "còn phòng", "chưa thuê", "chưa có khách"]):
             empty_lines = [line.strip() for line in context.splitlines() if "trống" in line.lower() or "empty" in line.lower() or "chưa có khách" in line.lower()]
             return (
                 "<strong>🔑 Danh Sách Căn Hộ Hiện Đang Trống (Có Thể Cho Thuê Ngay):</strong><ul>"
@@ -728,24 +694,80 @@ class AIService:
                 "<em>💡 Bạn có thể vào tab 'Quản Lý Căn Hộ' để xem hình ảnh và sơ đồ mặt bằng chi tiết của các căn trên.</em>"
             )
 
-        # 13. NỘI QUY: GIỜ GIẤC, TIẾP KHÁCH, KHOAN ĐỤC, TẠM TRÚ, RÁC
-        if any(k in q for k in ["giờ giấc", "ra vào", "tiếp khách", "qua đêm", "khóa cửa"]):
+        # 7. VỊ TRÍ TÒA NHÀ & TIỆN ÍCH KHU VỰC Z115
+        if any(k in q for k in ["vị trí", "ở đâu", "địa chỉ", "tiện ích", "z115", "gần trường", "khu vực"]):
             return (
-                "<strong>⏰ Quy Định Về Giờ Giấc & Tiếp Khách (ICTU Tower):</strong><br>"
-                "• <strong>Cư dân tòa nhà:</strong> Ra vào tự do 24/7 bằng thẻ từ thang máy & cửa sảnh RFID.<br>"
-                "• <strong>Khách vãng lai:</strong> Gửi xe tại hầm B1/B2 và đăng ký xuất trình CCCD tại quầy Lễ tân/Bảo vệ tầng G.<br>"
-                "• <strong>Khách ở qua đêm:</strong> Cư dân vui lòng thông báo cho Ban Quản Lý hoặc bảo vệ trước 22h00 để phục vụ công tác an ninh.<br>"
-                "• <strong>Hotline bảo vệ trực ca đêm:</strong> <strong>0988 123 456</strong> (hoặc máy nội bộ sảnh)."
+                "<strong>📍 Vị Trí Đắc Địa & Hệ Thống Tiện Ích Tòa Nhà ICTU Tower:</strong><br>"
+                "• <strong>Địa chỉ:</strong> Đường Z115, Xã Quyết Thắng, TP. Thái Nguyên (Cách cổng trường ĐH CNTT & TT - ICTU chỉ 200m).<br>"
+                "• <strong>Vị trí kết nối:</strong><br>"
+                "&nbsp;&nbsp;• 2 phút đi bộ tới Đại học CNTT & Truyền Thông (ICTU).<br>"
+                "&nbsp;&nbsp;• 5 phút tới ĐH Khoa Học, ĐH Sư Phạm Thái Nguyên.<br>"
+                "&nbsp;&nbsp;• 10 phút vào trung tâm thành phố và Vincom Plaza Thái Nguyên.<br>"
+                "• <strong>Hệ sinh thái tiện ích cao cấp tích hợp:</strong><br>"
+                "&nbsp;&nbsp;• <strong>An ninh 24/7:</strong> Thẻ từ phân tầng thang máy RFID, camera an ninh góc rộng mọi tầng, bảo vệ túc trực 24/24.<br>"
+                "&nbsp;&nbsp;• <strong>Hầm gửi xe thông minh:</strong> 2 tầng hầm rộng rãi cho ô tô & xe máy, trạm sạc xe điện VinFast.<br>"
+                "&nbsp;&nbsp;• <strong>Dịch vụ tầng trệt:</strong> Siêu thị mini 24/7, cafe Highland & khu Co-working tự học cho sinh viên/chuyên gia.<br>"
+                "&nbsp;&nbsp;• <strong>Hỗ trợ kỹ thuật:</strong> Đội bảo trì túc trực xử lý sự cố điện nước trong vòng 15 phút."
             )
 
-        if any(k in q for k in ["khoan", "đục", "thi công", "gây ồn"]):
+        # 8. CÚ PHÁP CHUYỂN KHOẢN VIETQR & NGÂN HÀNG
+        if any(k in q for k in ["vietqr", "cú pháp", "chuyển khoản", "stk", "tài khoản", "ngân hàng"]):
             return (
-                "<strong>🛠️ Quy Định Về Thi Công Sửa Chữa & Tiếng Ồn:</strong><br>"
-                "• Khung giờ được phép khoan đục: <strong>08h00 - 11h30</strong> và <strong>13h30 - 17h00</strong> (Thứ Hai đến Thứ Sáu).<br>"
-                "• Nghiêm cấm thi công gây ồn sau 22h00, giờ nghỉ trưa, và toàn bộ Thứ Bảy, Chủ Nhật."
+                "<strong>💳 Thông Tin Chuyển Khoản & Cú Pháp Thanh Toán Tự Động VietQR:</strong><br>"
+                "• Ngân hàng thụ hưởng: <strong>MB Bank (Ngân hàng Quân Đội)</strong><br>"
+                "• Số tài khoản: <strong>99998888ICTU</strong><br>"
+                "• Chủ tài khoản: <strong>BAN QUẢN LÝ TÒA NHÀ ICTU TOWER</strong><br>"
+                "• Cú pháp chuyển khoản: <code>ICTU [Mã_Phòng]</code> (Ví dụ: <em>ICTU A101</em>)<br>"
+                "• <strong>Cơ chế tự động:</strong> Sau khi chuyển khoản đúng cú pháp, hệ thống sẽ tự động gạch nợ qua Webhook ngân hàng và cập nhật trạng thái sau 30 giây."
             )
 
-        # 14. TRA CỨU PHÒNG CỤ THỂ (VD: A101, B205...)
+        # 9. TRA CỨU QUY CHẾ TÒA NHÀ QUA VECTOR RAG (NỘI QUY, THẺ, THÚ CƯNG, TIỀN CỌC, GIỜ GIẤC, SỬA CHỮA, PHẠT...)
+        rule_keywords = [
+            "thẻ", "thang máy", "gửi xe", "bãi xe", "xe máy", "ô tô", "thú cưng", "chó", "mèo", "pet", "nuôi",
+            "cọc", "tiền cọc", "hoàn cọc", "trả cọc", "giờ giấc", "sau 22", "sau 23", "23h", "khách", "qua đêm",
+            "phạt", "hát", "hợp đồng", "gia hạn", "bảo trì", "pccc", "cháy", "ồn", "karaoke", "rác", "vệ sinh",
+            "chấm dứt", "sửa chữa", "điều khoản", "nội quy", "quy định", "quy chế", "luật", "biểu phí", "đơn giá", "khoan đục"
+        ]
+        is_regulation_intent = any(k in q for k in rule_keywords)
+
+        # Tìm kiếm Vector RAG nếu có ý định hoặc tìm thấy kết quả tương đồng
+        matched_chunks = rag_results
+        if (matched_chunks is None or len(matched_chunks) == 0) and rag_service:
+            try:
+                matched_chunks = rag_service.search(question, top_k=2, min_similarity=0.20)
+            except Exception:
+                matched_chunks = []
+
+        if matched_chunks and len(matched_chunks) > 0:
+            top_match = matched_chunks[0]
+            # Nếu người dùng hỏi đúng về quy định hoặc độ tương đồng cao (>= 0.25)
+            if is_regulation_intent or top_match.get("similarity", 0) >= 0.25:
+                title = top_match.get("title", "").strip().rstrip(":")
+                chapter = top_match.get("chapter", "QUY CHẾ TÒA NHÀ")
+                content = top_match.get("content", "").replace(f"[{chapter}]", "").strip()
+                sim_percent = top_match.get("similarity", 0) * 100
+
+                extra_html = ""
+                if len(matched_chunks) > 1 and matched_chunks[1].get("similarity", 0) >= 0.25:
+                    sub = matched_chunks[1]
+                    sub_title = sub.get("title", "").strip().rstrip(":")
+                    sub_content = sub.get("content", "").replace(f"[{sub.get('chapter', '')}]", "").strip()
+                    extra_html = f"<div class='mt-2 pt-2 border-top small text-muted'><strong>📌 Quy định liên quan thêm - {sub_title}:</strong> {sub_content}</div>"
+
+                return (
+                    f"<div class='p-3 bg-light border border-primary rounded-3 shadow-sm mb-2'>"
+                    f"<div class='d-flex align-items-center justify-content-between mb-2'>"
+                    f"<span class='badge bg-primary fs-6'><i class='fa-solid fa-book-bookmark me-1'></i>Vector RAG - Tra Cứu Quy Chế Tòa Nhà</span>"
+                    f"<span class='badge bg-white text-primary border border-primary'>Độ khớp Cosine: {sim_percent:.1f}%</span>"
+                    f"</div>"
+                    f"<h6 class='text-primary fw-bold mb-2'>📖 {title}</h6>"
+                    f"<div class='p-2 bg-white rounded border-start border-4 border-primary text-dark fs-6'>{content}</div>"
+                    f"{extra_html}"
+                    f"<div class='mt-2 small text-secondary'><i class='fa-solid fa-file-lines me-1'></i><em>Nguồn trích xuất: app/data/quy_dinh_toa_nha.txt ({chapter})</em></div>"
+                    f"</div>"
+                )
+
+        # 10. TRA CỨU PHÒNG CỤ THỂ (VD: A101, B205...)
         room_match = re.search(r"\b([A-Za-z]\s?\d{3})\b", question, re.IGNORECASE)
         if room_match:
             room_code = room_match.group(1).replace(" ", "").upper()
@@ -758,30 +780,12 @@ class AIService:
                     f"<em>💡 Cần thực hiện thao tác gì với căn {room_code} (nhắc nợ, sửa chữa, gia hạn HĐ), bạn có thể yêu cầu tôi hỗ trợ!</em>"
                 )
 
-        # 15. TÌM KIẾM THEO TỪ KHÓA THỰC THỂ (Tên người, CCCD, biển số xe)
-        STOP_WORDS = {
-            "có", "được", "không", "trong", "ngoài", "căn", "hộ", "nhà", "phòng", "của", "cho",
-            "này", "đó", "người", "tôi", "bạn", "làm", "sao", "gì", "nào", "thế", "ở", "và",
-            "là", "các", "những", "một", "với", "về", "hỏi", "biết", "hay", "ạ", "ơi", "toà", "tòa"
-        }
-        meaningful_words = [w for w in re.findall(r"\w+", q) if len(w) > 2 and w not in STOP_WORDS]
-        if meaningful_words:
-            matched_lines = []
-            for line in context.splitlines():
-                for w in meaningful_words:
-                    if w in line.lower() and not any(tag in line for tag in ["=== TỔNG QUAN", "=== 1. TOÀN BỘ"]):
-                        matched_lines.append(line.strip())
-                        break
-            if matched_lines:
-                unique_matches = list(dict.fromkeys(matched_lines))[:6]
-                return "<strong>🔍 Kết Quả Tra Cứu Từ Dữ Liệu Tòa Nhà:</strong><ul>" + "".join(f"<li>{l}</li>" for l in unique_matches) + "</ul>"
-
-        # 16. MẶC ĐỊNH: Phản hồi lịch sự, hướng dẫn rõ ràng (KHÔNG in lung tung danh sách phòng)
+        # 11. MẶC ĐỊNH: Phản hồi lịch sự, hướng dẫn rõ ràng
         return (
             "<strong>🤖 Trợ Lý Trí Tuệ Nhân Tạo ICTU Tower:</strong><br>"
             "Tôi đã tiếp nhận câu hỏi của bạn. Để được giải đáp nhanh và chính xác nhất, bạn có thể bấm vào các gợi ý ở trên hoặc hỏi về:<br>"
             "• <strong>Vị trí & Tiện ích:</strong> Vị trí tòa nhà ICTU Tower ở đâu? Tiện ích xung quanh?<br>"
-            "• <strong>Nội quy & Đời sống:</strong> Quy định nuôi thú cưng, giờ giấc ra vào, hoàn trả tiền cọc, mẹo tiết kiệm điện...<br>"
+            "• <strong>Nội quy & Đời sống:</strong> Quy định nuôi thú cưng, làm mất thẻ thang máy, giờ giấc ra vào, hoàn trả tiền cọc, mẹo tiết kiệm điện...<br>"
             "• <strong>Vận hành căn hộ:</strong> Tỷ lệ lấp đầy, danh sách nợ tiền, tính tiền điện phòng A101, sự cố nhảy Aptomat...<br>"
             "• <strong>Tính toán tự nhiên:</strong> Bạn có thể gõ phép tính bất kỳ (vd: <em>Tính 15 nhân 350 nghìn</em>, <em>50 triệu chia 10</em>)."
         )

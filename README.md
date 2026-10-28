@@ -19,10 +19,11 @@
 6. **Theo dõi thanh toán, phí dịch vụ & công nợ**: Tự động tính toán chỉ số điện, nước cũ - mới, phí rác, gửi xe, quản lý công nợ cư dân và dòng tiền thu chi minh bạch.
 7. **Quản lý yêu cầu bảo trì từ khách thuê**: Tiếp nhận phản ánh sự cố kỹ thuật từ cư dân, phân loại mức độ khẩn cấp (Khẩn cấp, Cao, Bình thường) và cập nhật tiến độ xử lý sửa chữa.
 8. **Thống kê công suất thuê, doanh thu, công nợ**: Biểu đồ trực quan hóa tỷ lệ lấp đầy phòng, doanh thu định kỳ và cơ cấu phòng bằng **Chart.js**.
-9. **Tích hợp Trí tuệ Nhân tạo (Gemini AI)**:
+9. **Tích hợp Trí tuệ Nhân tạo & Vector RAG (Gemini AI)**:
+   - **Công nghệ Vector & RAG (Retrieval-Augmented Generation)**: Chuyển đổi bộ quy chế tòa nhà thành không gian vector bằng mô hình `text-embedding-004`, tính toán độ tương đồng Cosine Similarity để trích xuất chính xác từng Điều, Khoản nội quy khi cư dân hỏi đáp.
    - **Tóm tắt hợp đồng**: Tự động bóc tách các điều khoản trọng yếu, quyền và nghĩa vụ hai bên, đồng thời phát hiện và cảnh báo rủi ro pháp lý.
    - **Sinh thông báo thanh toán & vận hành**: Soạn thảo thông báo nhắc nợ, gia hạn hợp đồng, lịch bảo dưỡng, nhắc nhở nội quy theo 3 sắc thái (*Lịch sự & Trang trọng*, *Thân thiện & Gắn kết*, *Quyết liệt & Khẩn cấp*).
-   - **Trợ lý hỏi đáp quy định thuê nhà**: Chatbot thông minh giải đáp quy chế tòa nhà dựa trên ngữ cảnh dữ liệu thời gian thực được đồng bộ từ CSDL.
+   - **Trợ lý hỏi đáp quy định thuê nhà**: Chatbot thông minh giải đáp quy chế tòa nhà dựa trên ngữ cảnh dữ liệu thời gian thực được đồng bộ từ CSDL và Vector RAG.
    - **Cơ chế Offline Fallback an toàn**: Tự động kích hoạt bộ phân tích dự phòng Regex khi mất mạng hoặc hết quota API, cam kết **không bịa đặt thông tin**.
 
 ---
@@ -34,6 +35,7 @@
 | **Backend** | Python 3.10+, FastAPI, Uvicorn, Pydantic | Xây dựng RESTful API hiệu năng cao, xác thực dữ liệu chặt chẽ |
 | **Database & ORM** | PostgreSQL 14+, SQLAlchemy 2.0+, Psycopg2 | Hệ quản trị CSDL quan hệ tin cậy, thao tác ORM hướng đối tượng |
 | **AI & LLM** | Google Gemini API (gemini-2.0-flash, gemini-1.5-flash) | Mô hình ngôn ngữ lớn xử lý văn bản, tóm tắt và sinh thông báo |
+| **Vector & RAG** | Text-Embedding-004, Cosine Similarity, Vector Store | Không gian vector đặc trưng, tìm kiếm tương đồng ngữ nghĩa (Semantic Search) |
 | **Frontend** | HTML5, CSS3, JavaScript (ES6+), Bootstrap 5.3 | Giao diện Single Page Application (SPA) responsive, hiện đại |
 | **Giao diện & Biểu đồ**| Chart.js, SweetAlert2, Font Awesome 6 | Biểu đồ thống kê trực quan và hộp thoại tương tác người dùng |
 | **Cấu hình** | Python-Dotenv | Quản lý biến môi trường bảo mật |
@@ -47,11 +49,14 @@ DemoQL/
 ├── app/
 │   ├── __init__.py          # Khởi tạo module app
 │   ├── ai_service.py        # Module xử lý AI Gemini, Prompt Engineering & Offline Fallback
+│   ├── rag_service.py       # Module Vector Database, Embedding & Cosine Similarity Search (RAG)
 │   ├── database.py          # Cấu hình SQLAlchemy Engine, SessionLocal & kết nối PostgreSQL
 │   ├── main.py              # Ứng dụng FastAPI chính, khai báo các API Endpoints
 │   ├── models.py            # Khai báo cấu trúc bảng CSDL (Room, Tenant, Contract, v.v.)
 │   ├── seed_data.py         # Script tự động khởi tạo bảng và nạp sẵn dữ liệu mẫu
-│   └── test_db.py           # Script kiểm tra kết nối PostgreSQL và thống kê dữ liệu
+│   ├── test_db.py           # Script kiểm tra kết nối PostgreSQL và thống kê dữ liệu
+│   └── data/
+│       └── quy_dinh_toa_nha.txt # Cơ sở tri thức quy chế tòa nhà cho hệ thống Vector RAG
 ├── static/
 │   └── index.html           # Giao diện Single Page Application (HTML/CSS/JS)
 ├── .env.example             # File mẫu cấu hình biến môi trường
@@ -149,7 +154,9 @@ Sau khi khởi chạy server thành công:
 | `GET` | `/api/v1/ai/health` | Kiểm tra kết nối và trạng thái hoạt động của Gemini API Key |
 | `POST` | `/api/v1/ai/summarize-contract` | AI tóm tắt, phân tích và trích xuất điều khoản hợp đồng |
 | `POST` | `/api/v1/ai/generate-notice` | AI tự động soạn thảo thông báo theo sắc thái và ngữ cảnh |
-| `POST` | `/api/v1/ai/chat` | Trợ lý Chatbot hỏi đáp thông minh với dữ liệu ngữ cảnh tòa nhà |
+| `POST` | `/api/v1/ai/chat` | Trợ lý Chatbot hỏi đáp thông minh với dữ liệu ngữ cảnh tòa nhà & Vector RAG |
+| `GET` | `/api/v1/ai/rag/status` | Kiểm tra trạng thái Vector Database & không gian vector RAG |
+| `POST` | `/api/v1/ai/rag/search` | Tìm kiếm vector tương đồng (Cosine Similarity) trong văn bản quy chế |
 
 ---
 
